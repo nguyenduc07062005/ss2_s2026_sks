@@ -5,6 +5,8 @@ import { AppService } from './app.service';
 import { LlmModule } from './common/llm/llm.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthenticationModule } from './modules/authentication/authentication.module';
+import { DocumentModule } from './modules/document/document.module';
+import { FolderModule } from './modules/folder/folder.module';
 
 @Module({
   imports: [
@@ -13,6 +15,8 @@ import { AuthenticationModule } from './modules/authentication/authentication.mo
     }),
     DatabaseModule,
     AuthenticationModule,
+    DocumentModule,
+    FolderModule,
     LlmModule,
   ],
   controllers: [AppController],

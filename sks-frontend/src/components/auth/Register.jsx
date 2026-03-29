@@ -26,17 +26,17 @@ const Register = () => {
     setError('');
 
     if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
-      setError('Vui lòng điền đầy đủ tất cả các trường.');
+      setError('Please fill all required fields.');
       return;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Mật khẩu xác nhận không khớp. Vui lòng kiểm tra lại.');
+      setError('Passwords do not match. Please check again.');
       return;
     }
 
     if (formData.password.length < 6) {
-      setError('Mật khẩu phải có ít nhất 6 ký tự.');
+      setError('Password must be at least 6 characters.');
       return;
     }
 
@@ -52,7 +52,7 @@ const Register = () => {
       navigate('/login', { replace: true });
     } catch (requestError) {
       setError(
-        requestError.response?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.',
+        requestError.response?.data?.message || 'Registration failed. Please try again.',
       );
     } finally {
       setIsSubmitting(false);
@@ -74,45 +74,43 @@ const Register = () => {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
-      {/* Nền trang trí */}
+      {/* Background blobs */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 h-[36rem] w-[36rem] rounded-full bg-indigo-400/20 blur-3xl" />
         <div className="absolute -bottom-40 -left-40 h-[36rem] w-[36rem] rounded-full bg-violet-400/20 blur-3xl" />
       </div>
 
       <section className="relative grid w-full max-w-6xl overflow-hidden rounded-3xl shadow-2xl shadow-indigo-900/10 xl:grid-cols-[1.1fr_0.9fr]">
-        {/* Cột trái: Giới thiệu */}
         <AuthShowcase
-          title="Tạo tài khoản mới"
-          description="Đăng ký ngay để bắt đầu hành trình quản lý kiến thức thông minh cùng AI."
+          title="Create Account"
+          description="Register now to start your smart knowledge management journey with AI."
           variant="blue"
         />
 
-        {/* Cột phải: Form đăng ký */}
         <div className="bg-white px-10 py-14 sm:px-14">
           <div className="mx-auto max-w-sm">
             <p className="text-xs font-bold uppercase tracking-widest text-blue-600">
-              Tạo tài khoản
+              Account Registration
             </p>
             <h2 className="mt-2 text-4xl font-bold text-slate-900">
-              Bắt đầu nào! 🚀
+              Get Started! 🚀
             </h2>
             <p className="mt-2 text-base text-slate-500">
-              Điền thông tin bên dưới để mở tài khoản của bạn.
+              Fill in the details below to open your workspace.
             </p>
 
             <form className="mt-8 space-y-4" onSubmit={handleSignup}>
-              {/* Họ và tên */}
+              {/* Full Name */}
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Họ và tên
+                  Full Name
                 </label>
                 <input
                   id="register-name"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-base text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 placeholder:text-slate-400"
                   type="text"
                   name="name"
-                  placeholder="Ví dụ: Nguyễn Văn A"
+                  placeholder="e.g. John Doe"
                   value={formData.name}
                   onChange={handleChange}
                   required
@@ -122,24 +120,24 @@ const Register = () => {
               {/* Email */}
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Địa chỉ Email
+                  Email Address
                 </label>
                 <input
                   id="register-email"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-base text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 placeholder:text-slate-400"
                   type="email"
                   name="email"
-                  placeholder="example@email.com"
+                  placeholder="name@example.com"
                   value={formData.email}
                   onChange={handleChange}
                   required
                 />
               </div>
 
-              {/* Mật khẩu */}
+              {/* Password */}
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Mật khẩu
+                  Password
                 </label>
                 <div className="relative">
                   <input
@@ -147,7 +145,7 @@ const Register = () => {
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 pr-12 text-base text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 placeholder:text-slate-400"
                     type={showPassword ? 'text' : 'password'}
                     name="password"
-                    placeholder="Ít nhất 6 ký tự"
+                    placeholder="At least 6 characters"
                     value={formData.password}
                     onChange={handleChange}
                     required
@@ -159,10 +157,10 @@ const Register = () => {
                 </div>
               </div>
 
-              {/* Xác nhận mật khẩu */}
+              {/* Confirm Password */}
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Xác nhận mật khẩu
+                  Confirm Password
                 </label>
                 <div className="relative">
                   <input
@@ -170,7 +168,7 @@ const Register = () => {
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 pr-12 text-base text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 placeholder:text-slate-400"
                     type={showConfirm ? 'text' : 'password'}
                     name="confirmPassword"
-                    placeholder="Nhập lại mật khẩu"
+                    placeholder="Re-enter password"
                     value={formData.confirmPassword}
                     onChange={handleChange}
                     required
@@ -182,7 +180,6 @@ const Register = () => {
                 </div>
               </div>
 
-              {/* Thông báo lỗi */}
               {error && (
                 <div className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="mt-0.5 h-4 w-4 shrink-0">
@@ -192,7 +189,6 @@ const Register = () => {
                 </div>
               )}
 
-              {/* Nút đăng ký */}
               <button
                 id="register-submit"
                 className="w-full rounded-xl bg-blue-600 px-4 py-4 text-base font-bold text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
@@ -205,16 +201,16 @@ const Register = () => {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
-                    Đang tạo tài khoản...
+                    Creating account...
                   </span>
-                ) : 'Tạo tài khoản'}
+                ) : 'Create Account'}
               </button>
             </form>
 
             <p className="mt-8 text-center text-sm text-slate-500">
-              Đã có tài khoản?{' '}
+              Already have an account?{' '}
               <Link className="font-semibold text-blue-600 hover:text-blue-500" to="/login">
-                Đăng nhập
+                Log In
               </Link>
             </p>
           </div>

@@ -2,7 +2,15 @@ import { Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
+import { Document } from './entities/document.entity';
+import { Chunk } from './entities/chunks.entity';
+import { UserDocument } from './entities/user-document.entity';
+import { Folder } from './entities/folder.entity';
 import { UserRepository } from './repositories/user.repository';
+import { DocumentRepository } from './repositories/document.repository';
+import { ChunkRepository } from './repositories/chunks.repository';
+import { UserDocumentRepository } from './repositories/user-document.repository';
+import { FolderRepository } from './repositories/folder.repository';
 
 @Global()
 @Module({
@@ -18,15 +26,28 @@ import { UserRepository } from './repositories/user.repository';
         username: config.get<string>('DATABASE_USERNAME') ?? 'postgres',
         password: config.get<string>('DATABASE_PASSWORD') ?? 'postgres',
         database: config.get<string>('DATABASE_NAME') ?? 'sks',
-        entities: [User],
+        entities: [User, Document, Chunk, UserDocument, Folder],
         synchronize:
           (config.get<string>('DATABASE_SYNC') ?? 'false') === 'true',
         logging: (config.get<string>('DATABASE_LOGGING') ?? 'false') === 'true',
       }),
     }),
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, Document, Chunk, UserDocument, Folder]),
   ],
-  providers: [UserRepository],
-  exports: [TypeOrmModule, UserRepository],
+  providers: [
+    UserRepository,
+    DocumentRepository,
+    ChunkRepository,
+    UserDocumentRepository,
+    FolderRepository,
+  ],
+  exports: [
+    TypeOrmModule,
+    UserRepository,
+    DocumentRepository,
+    ChunkRepository,
+    UserDocumentRepository,
+    FolderRepository,
+  ],
 })
 export class DatabaseModule {}

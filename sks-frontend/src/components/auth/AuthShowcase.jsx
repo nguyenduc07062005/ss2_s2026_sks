@@ -1,39 +1,38 @@
-import BrandLogo from '../BrandLogo.jsx';
+import BrandLogo from "../BrandLogo.jsx";
 
 const variants = {
   teal: {
-    shell: 'bg-gradient-to-br from-teal-600 via-teal-500 to-emerald-500',
-    glow: 'bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.18),transparent_60%)]',
-    orb1: 'bg-white/10',
-    orb2: 'bg-teal-300/20',
-    accentText: 'text-teal-50',
-    divider: 'from-white/40 to-transparent',
-    dot: 'bg-white shadow-[0_0_0_8px_rgba(255,255,255,0.15)]',
-    btnBg: 'bg-white/15 border-white/25',
+    shell: "bg-gradient-to-br from-teal-600 via-teal-500 to-emerald-500",
+    glow: "bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.18),transparent_60%)]",
+    orb1: "bg-white/10",
+    orb2: "bg-teal-300/20",
+    accentText: "text-teal-50",
+    divider: "from-white/40 to-transparent",
+    dot: "bg-white shadow-[0_0_0_8px_rgba(255,255,255,0.15)]",
+    btnBg: "bg-white/15 border-white/25",
     features: [
-      { icon: '📄', text: 'Quản lý tài liệu thông minh' },
-      { icon: '🤖', text: 'Tóm tắt & phân tích bằng AI' },
-      { icon: '💬', text: 'Hỏi đáp trực tiếp với tài liệu' },
+      { icon: "📄", text: "Smart Document Management" },
+      { icon: "🤖", text: "AI-Powered Summaries" },
+      { icon: "💬", text: "Chat with your Documents" },
     ],
   },
   blue: {
-    shell: 'bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600',
-    glow: 'bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.15),transparent_60%)]',
-    orb1: 'bg-white/10',
-    orb2: 'bg-blue-300/20',
-    accentText: 'text-blue-50',
-    divider: 'from-white/40 to-transparent',
-    dot: 'bg-white shadow-[0_0_0_8px_rgba(255,255,255,0.15)]',
-    btnBg: 'bg-white/15 border-white/25',
+    shell: "bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600",
+    glow: "bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.15),transparent_60%)]",
+    orb1: "bg-white/10",
+    orb2: "bg-blue-300/20",
+    accentText: "text-blue-50",
+    divider: "from-white/40 to-transparent",
+    dot: "bg-white shadow-[0_0_0_8px_rgba(255,255,255,0.15)]",
+    btnBg: "bg-white/15 border-white/25",
     features: [
-      { icon: '🔒', text: 'Tài khoản bảo mật cá nhân' },
-      { icon: '🗂️', text: 'Không gian làm việc riêng' },
-      { icon: '🚀', text: 'Bắt đầu miễn phí ngay hôm nay' },
+      { icon: "🔒", text: "Secure Personal Account" },
+      { icon: "🗂️", text: "Private Workspace" },
     ],
   },
 };
 
-const AuthShowcase = ({ title, description, variant = 'teal' }) => {
+const AuthShowcase = ({ title, description, variant = "teal" }) => {
   const theme = variants[variant];
 
   return (
@@ -42,15 +41,19 @@ const AuthShowcase = ({ title, description, variant = 'teal' }) => {
     >
       {/* Background effects */}
       <div className={`absolute inset-0 ${theme.glow}`} />
-      <div className={`absolute -top-32 -right-32 h-96 w-96 rounded-full blur-3xl ${theme.orb1}`} />
-      <div className={`absolute -bottom-24 -left-24 h-80 w-80 rounded-full blur-3xl ${theme.orb2}`} />
+      <div
+        className={`absolute -top-32 -right-32 h-96 w-96 rounded-full blur-3xl ${theme.orb1}`}
+      />
+      <div
+        className={`absolute -bottom-24 -left-24 h-80 w-80 rounded-full blur-3xl ${theme.orb2}`}
+      />
 
       {/* Content */}
       <div className="relative flex h-full flex-col justify-between gap-12">
         <div>
-          {/* Logo – app icon lớn, rõ chữ */}
-          <div className="mb-8 flex justify-start">
-            <div className="flex h-32 w-32 items-center justify-center rounded-3xl bg-white p-2.5 shadow-2xl ring-2 ring-white/30">
+          {/* Logo – extra large to be ultra clear */}
+          <div className="mb-10 flex justify-start">
+            <div className="flex h-40 w-40 items-center justify-center rounded-[2.5rem] bg-white p-2 shadow-2xl ring-4 ring-white/20">
               <BrandLogo className="h-full w-full" />
             </div>
           </div>
@@ -60,8 +63,8 @@ const AuthShowcase = ({ title, description, variant = 'teal' }) => {
             Smart Knowledge System
           </p>
 
-          {/* Title – 1 dòng */}
-          <h1 className="mt-4 text-3xl font-bold leading-tight text-white sm:text-4xl">
+          {/* Title – Extra large and impressive */}
+          <h1 className="mt-4 text-5xl font-extrabold leading-[1.1] tracking-tight text-white sm:text-6xl lg:text-7xl">
             {title}
           </h1>
 
@@ -74,10 +77,14 @@ const AuthShowcase = ({ title, description, variant = 'teal' }) => {
           <ul className="mt-10 space-y-4">
             {theme.features.map((f, i) => (
               <li key={i} className="flex items-center gap-4">
-                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-lg ${theme.btnBg}`}>
+                <span
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-lg ${theme.btnBg}`}
+                >
                   {f.icon}
                 </span>
-                <span className="text-base font-medium text-white/90">{f.text}</span>
+                <span className="text-base font-medium text-white/90">
+                  {f.text}
+                </span>
               </li>
             ))}
           </ul>

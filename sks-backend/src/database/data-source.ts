@@ -2,6 +2,10 @@ import 'dotenv/config';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { User } from './entities/user.entity';
+import { Document } from './entities/document.entity';
+import { Chunk } from './entities/chunks.entity';
+import { UserDocument } from './entities/user-document.entity';
+import { Folder } from './entities/folder.entity';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -12,7 +16,7 @@ export const AppDataSource = new DataSource({
   database: process.env.DATABASE_NAME || 'sks',
   synchronize: false,
   logging: (process.env.DATABASE_LOGGING || 'false') === 'true',
-  entities: [User],
+  entities: [User, Document, Chunk, UserDocument, Folder],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   migrationsTableName: 'migrations',
 });

@@ -1,23 +1,15 @@
 import logo from '../assets/logo.png';
 
-const BrandBadge = ({ variant = 'teal', className = '' }) => {
-  const theme =
-    variant === 'blue'
-      ? 'from-blue-100 via-sky-50 to-white'
-      : 'from-teal-100 via-cyan-50 to-white';
-
+const BrandBadge = ({ className = '' }) => {
   return (
     <div
-      className={`relative flex items-center justify-center rounded-full border border-white/80 bg-white/55 shadow-[0_18px_45px_rgba(148,163,184,0.16)] backdrop-blur ${className}`.trim()}
+      className={`relative flex items-center justify-center overflow-hidden rounded-[24px] bg-transparent ${className}`.trim()}
     >
-      <div className={`absolute inset-[10%] rounded-full bg-gradient-to-br ${theme}`} />
-      <div
-        className="relative h-[56%] w-[56%] rounded-full border border-white/80 bg-white bg-no-repeat shadow-[inset_0_2px_16px_rgba(148,163,184,0.16)]"
-        style={{
-          backgroundImage: `url(${logo})`,
-          backgroundPosition: '18% center',
-          backgroundSize: '170%',
-        }}
+      <div className="absolute inset-0 rounded-[24px] bg-white/72 shadow-[0_18px_40px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/70 backdrop-blur-sm" />
+      <img
+        src={logo}
+        alt="Smart Knowledge System"
+        className="relative h-[98%] w-[99%] object-contain"
       />
     </div>
   );

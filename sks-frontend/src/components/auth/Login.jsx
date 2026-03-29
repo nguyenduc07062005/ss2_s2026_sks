@@ -16,7 +16,7 @@ const Login = () => {
     event.preventDefault();
 
     if (!email || !password) {
-      setError('Vui lòng nhập đầy đủ email và mật khẩu.');
+      setError('Please enter both email and password.');
       return;
     }
 
@@ -27,7 +27,7 @@ const Login = () => {
       const response = await postLogin(email, password);
 
       if (!response.accessToken) {
-        setError('Email hoặc mật khẩu không chính xác.');
+        setError('Invalid email or password.');
         return;
       }
 
@@ -36,7 +36,7 @@ const Login = () => {
       navigate('/', { replace: true });
     } catch (requestError) {
       setError(
-        requestError.response?.data?.message || 'Đăng nhập thất bại. Vui lòng thử lại.',
+        requestError.response?.data?.message || 'Login failed. Please try again.',
       );
     } finally {
       setIsSubmitting(false);
@@ -45,61 +45,57 @@ const Login = () => {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
-      {/* Nền trang trí */}
+      {/* Background blobs */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-40 -left-40 h-[36rem] w-[36rem] rounded-full bg-teal-400/20 blur-3xl" />
         <div className="absolute -bottom-40 -right-40 h-[36rem] w-[36rem] rounded-full bg-emerald-400/20 blur-3xl" />
       </div>
 
       <section className="relative grid w-full max-w-6xl overflow-hidden rounded-3xl shadow-2xl shadow-teal-900/10 xl:grid-cols-[1.1fr_0.9fr]">
-        {/* Cột trái: Giới thiệu */}
         <AuthShowcase
-          title="Chào mừng trở lại!"
-          description="Đăng nhập để truy cập không gian làm việc, quản lý tài liệu và tận dụng sức mạnh của AI."
+          title="Welcome Back!"
+          description="Sign in to access your workspace, manage your documents, and leverage the power of AI."
           variant="teal"
         />
 
-        {/* Cột phải: Form đăng nhập */}
         <div className="bg-white px-10 py-14 sm:px-14">
           <div className="mx-auto max-w-sm">
             <p className="text-xs font-bold uppercase tracking-widest text-teal-600">
-              Đăng nhập tài khoản
+              Account Login
             </p>
             <h2 className="mt-2 text-4xl font-bold text-slate-900">
-              Xin chào! 👋
+              Hello! 👋
             </h2>
             <p className="mt-2 text-base text-slate-500">
-              Nhập thông tin của bạn để tiếp tục sử dụng hệ thống.
+              Enter your credentials to continue using the system.
             </p>
 
             <form className="mt-10 space-y-5" onSubmit={handleLogin}>
-              {/* Email */}
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Địa chỉ Email
+                  Email Address
                 </label>
                 <input
                   id="login-email"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-base text-slate-900 outline-none transition focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-100 placeholder:text-slate-400"
                   type="email"
-                  placeholder="example@email.com"
+                  placeholder="name@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
               </div>
 
-              {/* Mật khẩu */}
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Mật khẩu
+                  Password
                 </label>
                 <div className="relative">
                   <input
                     id="login-password"
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 pr-12 text-base text-slate-900 outline-none transition focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-100 placeholder:text-slate-400"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="Nhập mật khẩu"
+                    placeholder="Enter password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -119,7 +115,6 @@ const Login = () => {
                 </div>
               </div>
 
-              {/* Thông báo lỗi */}
               {error && (
                 <div className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="mt-0.5 h-4 w-4 shrink-0"><path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" /></svg>
@@ -127,7 +122,6 @@ const Login = () => {
                 </div>
               )}
 
-              {/* Nút đăng nhập */}
               <button
                 id="login-submit"
                 className="w-full rounded-xl bg-teal-600 px-4 py-4 text-base font-bold text-white shadow-lg shadow-teal-500/30 transition hover:bg-teal-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
@@ -137,16 +131,16 @@ const Login = () => {
                 {isSubmitting ? (
                   <span className="flex items-center justify-center gap-2">
                     <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                    Đang đăng nhập...
+                    Signing in...
                   </span>
-                ) : 'Đăng nhập'}
+                ) : 'Log In'}
               </button>
             </form>
 
             <p className="mt-8 text-center text-sm text-slate-500">
-              Chưa có tài khoản?{' '}
+              Don't have an account?{' '}
               <Link className="font-semibold text-teal-600 hover:text-teal-500" to="/register">
-                Đăng ký ngay
+                Register Now
               </Link>
             </p>
           </div>

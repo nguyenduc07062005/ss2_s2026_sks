@@ -1,5 +1,6 @@
 import {
   DataSource,
+  DeleteResult,
   DeepPartial,
   EntityTarget,
   FindOneOptions,
@@ -29,5 +30,19 @@ export abstract class BaseRepository<T extends BaseEntity> {
   async create(data: DeepPartial<T>): Promise<T> {
     const entity = this.repository.create(data);
     return this.repository.save(entity);
+  }
+
+  getRepository(): Repository<T> {
+    return this.repository;
+  }
+
+  async update(id: string, data: DeepPartial<T>): Promise<T | null> {
+    await this.repository.update(id as never, data as never);
+    return this.findById(id);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const result: DeleteResult = await this.repository.delete(id as never);
+    return (result.affected ?? 0) > 0;
   }
 }

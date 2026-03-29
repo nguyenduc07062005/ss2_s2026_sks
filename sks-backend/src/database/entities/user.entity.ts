@@ -1,5 +1,7 @@
-import { Column, Entity } from 'typeorm';
+import { Column, Entity, OneToMany } from 'typeorm';
 import { BaseEntity } from './base.entity';
+import { UserDocument } from './user-document.entity';
+import { Folder } from './folder.entity';
 
 export enum UserRole {
   USER = 'user',
@@ -27,4 +29,11 @@ export class User extends BaseEntity {
 
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
+
+  /** Relations */
+  @OneToMany(() => UserDocument, (userDocument) => userDocument.user)
+  userDocuments: UserDocument[];
+
+  @OneToMany(() => Folder, (folder) => folder.owner)
+  folders: Folder[];
 }
