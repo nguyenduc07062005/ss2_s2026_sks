@@ -2,38 +2,37 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import App from './App.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { DocumentsProvider } from './components/DocumentsContext.jsx';
+import WorkspaceShell from './components/workspace/WorkspaceShell.jsx';
 import Login from './components/auth/Login.jsx';
 import Register from './components/auth/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
-import Documents from './pages/Documents.jsx';
+import DocumentViewer from './pages/DocumentViewer.jsx';
+import Favorites from './pages/Favorites.jsx';
+import Landing from './pages/Landing.jsx';
 
 const Layout = () => {
   return (
     <Routes>
       <Route path="/" element={<App />}>
-        <Route
-          index
-          element={
-            <ProtectedRoute>
-              <DocumentsProvider>
-                <Dashboard />
-              </DocumentsProvider>
-            </ProtectedRoute>
-          }
-        />
+        <Route index element={<Landing />} />
         <Route path="login" element={<Login />} />
         <Route path="register" element={<Register />} />
-        <Route path="dashboard" element={<Navigate to="/" replace />} />
         <Route
-          path="documents"
+          path="app"
           element={
             <ProtectedRoute>
               <DocumentsProvider>
-                <Documents />
+                <WorkspaceShell />
               </DocumentsProvider>
             </ProtectedRoute>
           }
-        />
+        >
+          <Route index element={<Dashboard />} />
+          <Route path="favorites" element={<Favorites />} />
+          <Route path="documents/:documentId" element={<DocumentViewer />} />
+        </Route>
+        <Route path="dashboard" element={<Navigate to="/app" replace />} />
+        <Route path="documents" element={<Navigate to="/app" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -28,7 +28,7 @@ export class UserDocumentRepository extends BaseRepository<UserDocument> {
   async getFavorites(userId: string): Promise<UserDocument[]> {
     return this.repository.find({
       where: { user: { id: userId }, isFavorite: true },
-      relations: ['document'],
+      relations: ['document', 'folder'],
     });
   }
 }

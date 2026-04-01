@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { postLogin } from '../../service/authAPI.js';
 import { getRoleFromToken, setToken } from '../../utils/auth.js';
 import AuthShowcase from './AuthShowcase.jsx';
 
 const Login = () => {
+  const location = useLocation();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -33,7 +34,9 @@ const Login = () => {
 
       setToken(response.accessToken);
       getRoleFromToken();
-      navigate('/', { replace: true });
+      const nextPath = location.state?.from?.pathname || '/app';
+      const nextSearch = location.state?.from?.search || '';
+      navigate(`${nextPath}${nextSearch}`, { replace: true });
     } catch (requestError) {
       setError(
         requestError.response?.data?.message || 'Login failed. Please try again.',

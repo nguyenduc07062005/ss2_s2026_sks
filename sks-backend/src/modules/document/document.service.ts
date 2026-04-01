@@ -381,6 +381,7 @@ export class DocumentService {
         .createQueryBuilder(UserDocument, 'userDocument')
         .leftJoin('userDocument.document', 'document')
         .leftJoin('userDocument.user', 'user')
+        .leftJoinAndSelect('userDocument.folder', 'folder')
         .select([
           'userDocument.id',
           'userDocument.isFavorite',
@@ -395,6 +396,8 @@ export class DocumentService {
           'document.status',
           'document.createdAt',
           'document.updatedAt',
+          'folder.id',
+          'folder.name',
         ])
         .where('user.id = :ownerId', { ownerId })
         .orderBy('document.createdAt', 'DESC')
@@ -405,12 +408,9 @@ export class DocumentService {
 
       const totalPages = Math.ceil(total / limit);
 
-      const documents = userDocuments.map((userDoc) => ({
-        ...userDoc.document,
-        title: userDoc.documentName,
-        isFavorite: userDoc.isFavorite,
-        formattedFileSize: this.formatFileSize(userDoc.document?.fileSize || 0),
-      }));
+      const documents = userDocuments.map((userDoc) =>
+        this.toDocumentSummary(userDoc),
+      );
 
       return {
         total,
@@ -535,11 +535,7 @@ export class DocumentService {
   async getFavorites(userId: string) {
     try {
       const favorites = await this.userDocumentRepository.getFavorites(userId);
-      return favorites.map((userDoc) => ({
-        ...userDoc.document,
-        title: userDoc.documentName,
-        isFavorite: userDoc.isFavorite,
-      }));
+      return favorites.map((userDoc) => this.toDocumentSummary(userDoc));
     } catch (error: unknown) {
       this.logger.error(
         `Failed to get favorites: ${this.getErrorMessage(error)}`,
@@ -564,6 +560,7 @@ export class DocumentService {
         .createQueryBuilder(UserDocument, 'userDocument')
         .leftJoin('userDocument.document', 'document')
         .leftJoin('userDocument.user', 'user')
+        .leftJoinAndSelect('userDocument.folder', 'folder')
         .select([
           'userDocument.id',
           'userDocument.isFavorite',
@@ -578,6 +575,8 @@ export class DocumentService {
           'document.status',
           'document.createdAt',
           'document.updatedAt',
+          'folder.id',
+          'folder.name',
         ])
         .where('user.id = :ownerId', { ownerId })
         .andWhere(
@@ -590,12 +589,9 @@ export class DocumentService {
         .take(limit)
         .getMany();
 
-      const titleDocuments = titleMatches.map((userDoc) => ({
-        ...userDoc.document,
-        title: userDoc.documentName || userDoc.document?.title,
-        isFavorite: userDoc.isFavorite,
-        formattedFileSize: this.formatFileSize(userDoc.document?.fileSize || 0),
-      }));
+      const titleDocuments = titleMatches.map((userDoc) =>
+        this.toDocumentSummary(userDoc),
+      );
 
       const excludedIds = titleDocuments.map((document) => document.id);
 
@@ -603,6 +599,7 @@ export class DocumentService {
         .createQueryBuilder(UserDocument, 'userDocument')
         .leftJoin('userDocument.document', 'document')
         .leftJoin('userDocument.user', 'user')
+        .leftJoinAndSelect('userDocument.folder', 'folder')
         .leftJoin('document.chunks', 'chunk')
         .select([
           'userDocument.id',
@@ -618,6 +615,8 @@ export class DocumentService {
           'document.status',
           'document.createdAt',
           'document.updatedAt',
+          'folder.id',
+          'folder.name',
         ])
         .where('user.id = :ownerId', { ownerId })
         .andWhere('LOWER(chunk.chunkText) LIKE LOWER(:query)', {
@@ -631,16 +630,15 @@ export class DocumentService {
         )
         .groupBy('userDocument.id')
         .addGroupBy('document.id')
+        .addGroupBy('folder.id')
+        .addGroupBy('folder.name')
         .orderBy('document.createdAt', 'DESC')
         .take(limit)
         .getMany();
 
-      const contentDocuments = chunkMatches.map((userDoc) => ({
-        ...userDoc.document,
-        title: userDoc.documentName || userDoc.document?.title,
-        isFavorite: userDoc.isFavorite,
-        formattedFileSize: this.formatFileSize(userDoc.document?.fileSize || 0),
-      }));
+      const contentDocuments = chunkMatches.map((userDoc) =>
+        this.toDocumentSummary(userDoc),
+      );
 
       return {
         relatedTitleDocuments: titleDocuments,
@@ -695,6 +693,7 @@ export class DocumentService {
         .createQueryBuilder(UserDocument, 'userDocument')
         .leftJoin('userDocument.document', 'document')
         .leftJoin('userDocument.user', 'user')
+        .leftJoinAndSelect('userDocument.folder', 'folder')
         .select([
           'userDocument.id',
           'userDocument.isFavorite',
@@ -709,6 +708,8 @@ export class DocumentService {
           'document.status',
           'document.createdAt',
           'document.updatedAt',
+          'folder.id',
+          'folder.name',
         ])
         .where('user.id = :ownerId', { ownerId })
         .andWhere('document.id != :documentId', { documentId })
@@ -748,12 +749,7 @@ export class DocumentService {
           });
 
           return {
-            ...userDoc.document,
-            title: userDoc.documentName || userDoc.document?.title,
-            isFavorite: userDoc.isFavorite,
-            formattedFileSize: this.formatFileSize(
-              userDoc.document?.fileSize || 0,
-            ),
+            ...this.toDocumentSummary(userDoc),
             relatedScore: score,
           };
         })
@@ -780,6 +776,27 @@ export class DocumentService {
       );
       throw new BadRequestException('Unable to retrieve related documents');
     }
+  }
+
+  /**
+   * Get document details for a user
+   */
+  async getDocumentDetails(documentId: string, ownerId: string) {
+    const userDocument = await this.dataSource
+      .getRepository(UserDocument)
+      .createQueryBuilder('userDocument')
+      .leftJoinAndSelect('userDocument.document', 'document')
+      .leftJoinAndSelect('userDocument.folder', 'folder')
+      .leftJoin('userDocument.user', 'user')
+      .where('document.id = :documentId', { documentId })
+      .andWhere('user.id = :ownerId', { ownerId })
+      .getOne();
+
+    if (!userDocument) {
+      throw new NotFoundException('Document not found or not owned by user');
+    }
+
+    return this.toDocumentSummary(userDocument);
   }
 
   /**
@@ -829,6 +846,22 @@ export class DocumentService {
     await this.dataSource.getRepository(UserDocument).save(userDocument);
 
     return { message: 'Document name updated successfully' };
+  }
+
+  private toDocumentSummary(
+    userDoc: UserDocument & {
+      document: Document;
+      folder?: { id?: string; name?: string } | null;
+    },
+  ) {
+    return {
+      ...userDoc.document,
+      title: userDoc.documentName || userDoc.document?.title,
+      isFavorite: userDoc.isFavorite,
+      formattedFileSize: this.formatFileSize(userDoc.document?.fileSize || 0),
+      folderId: userDoc.folder?.id || null,
+      folderName: userDoc.folder?.name || 'Workspace',
+    };
   }
 
   /**

@@ -52,8 +52,9 @@ const getRelatedDocuments = async (documentId, limit = 6) => {
   return response.data;
 };
 
-const getDocumentFile = (documentId) => {
-  return `${apiClient.defaults.baseURL}/documents/${documentId}/file`;
+const getDocumentDetails = async (documentId) => {
+  const response = await apiClient.get(`/documents/${documentId}`);
+  return response.data;
 };
 
 const updateDocumentName = async (documentId, newDocumentName) => {
@@ -61,6 +62,60 @@ const updateDocumentName = async (documentId, newDocumentName) => {
     newDocumentName,
   });
   return response.data;
+};
+
+const fetchDocumentFile = async (documentId) => {
+  const response = await apiClient.get(`/documents/${documentId}/file`, {
+    responseType: 'blob',
+  });
+
+  return {
+    blob: response.data,
+    contentType: response.headers['content-type'] || response.data.type || '',
+  };
+};
+
+const openDocumentFile = async (documentId) => {
+  const popup = window.open('', '_blank');
+
+  try {
+    const { blob } = await fetchDocumentFile(documentId);
+    const objectUrl = URL.createObjectURL(blob);
+
+    if (popup) {
+      popup.opener = null;
+      popup.location.href = objectUrl;
+    } else {
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  } catch (error) {
+    popup?.close();
+    throw error;
+  }
+};
+
+const downloadDocumentFile = async (documentId, title) => {
+  const { blob } = await fetchDocumentFile(documentId);
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = objectUrl;
+  if (title) {
+    link.download = title;
+  }
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 };
 
 export {
@@ -71,6 +126,9 @@ export {
   getFavorites,
   searchDocuments,
   getRelatedDocuments,
-  getDocumentFile,
+  getDocumentDetails,
+  fetchDocumentFile,
+  openDocumentFile,
+  downloadDocumentFile,
   updateDocumentName,
 };

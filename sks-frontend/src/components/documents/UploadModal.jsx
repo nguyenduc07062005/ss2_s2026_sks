@@ -298,7 +298,7 @@ const UploadModal = ({
                 >
                   {folders.map((folder) => (
                     <option key={folder.id} value={folder.id}>
-                      {`${"\u00A0".repeat(folder.depth * 4)}${folder.depth === 0 ? "Root" : folder.name}`}
+                      {`${"\u00A0".repeat(folder.depth * 4)}${folder.depth === 0 ? "Workspace" : folder.name}`}
                     </option>
                   ))}
                 </select>

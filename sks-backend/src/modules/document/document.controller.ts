@@ -208,6 +208,25 @@ export class DocumentController {
     };
   }
 
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  async getDocumentById(
+    @Param('id', ParseUUIDPipe) documentId: string,
+    @Request() req: ExpressRequest,
+  ) {
+    const ownerId = this.getUserId(req);
+    const document = await this.documentService.getDocumentDetails(
+      documentId,
+      ownerId,
+    );
+
+    return {
+      message: 'Document retrieved successfully',
+      document,
+    };
+  }
+
   // --- Serve document file ---
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
