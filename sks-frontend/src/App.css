@@ -1,33 +1,4 @@
 .app-shell {
   min-height: 100vh;
-  position: relative;
-  background:
-    radial-gradient(circle at top left, rgba(45, 212, 191, 0.2), transparent 34%),
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.18), transparent 28%),
-    radial-gradient(circle at bottom left, rgba(250, 204, 21, 0.14), transparent 26%),
-    linear-gradient(180deg, #f9fbff 0%, #eff4fb 100%);
-}
-
-.app-shell::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
-  background-size: 44px 44px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.22), transparent);
-}
-
-.app-shell::after {
-  content: '';
-  position: fixed;
-  inset: auto auto 8% 8%;
-  width: 18rem;
-  height: 18rem;
-  border-radius: 9999px;
-  background: radial-gradient(circle, rgba(14, 165, 233, 0.18), transparent 70%);
-  filter: blur(20px);
-  pointer-events: none;
+  background: #f4faff;
 }

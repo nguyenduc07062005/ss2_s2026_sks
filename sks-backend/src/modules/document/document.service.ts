@@ -412,6 +412,10 @@ export class DocumentService {
         this.toDocumentSummary(userDoc),
       );
 
+      this.logger.debug(
+        `Retrieved ${documents.length} documents for owner ${ownerId}`,
+      );
+
       return {
         total,
         currentPage: page,
@@ -780,9 +784,10 @@ export class DocumentService {
 
   /**
    * Get document details for a user
+   * Supports both Document ID and UserDocument ID for robustness
    */
   async getDocumentDetails(documentId: string, ownerId: string) {
-    const userDocument = await this.dataSource
+    let userDocument = await this.dataSource
       .getRepository(UserDocument)
       .createQueryBuilder('userDocument')
       .leftJoinAndSelect('userDocument.document', 'document')
@@ -791,6 +796,19 @@ export class DocumentService {
       .where('document.id = :documentId', { documentId })
       .andWhere('user.id = :ownerId', { ownerId })
       .getOne();
+
+    // If not found, try by UserDocument ID
+    if (!userDocument) {
+      userDocument = await this.dataSource
+        .getRepository(UserDocument)
+        .createQueryBuilder('userDocument')
+        .leftJoinAndSelect('userDocument.document', 'document')
+        .leftJoinAndSelect('userDocument.folder', 'folder')
+        .leftJoin('userDocument.user', 'user')
+        .where('userDocument.id = :documentId', { documentId })
+        .andWhere('user.id = :ownerId', { ownerId })
+        .getOne();
+    }
 
     if (!userDocument) {
       throw new NotFoundException('Document not found or not owned by user');
@@ -801,23 +819,43 @@ export class DocumentService {
 
   /**
    * Get document file path for serving
+   * Supports both Document ID and UserDocument ID for robustness
    */
   async getDocumentFilePath(
     documentId: string,
     ownerId: string,
   ): Promise<string> {
-    const document = await this.documentRepository.findByIdAndOwner(
+    // Try to find by Document ID first
+    let document = await this.documentRepository.findByIdAndOwner(
       documentId,
       ownerId,
     );
 
+    // If not found, try to find by UserDocument ID
     if (!document) {
+      const userDoc = await this.dataSource
+        .getRepository(UserDocument)
+        .findOne({
+          where: { id: documentId, user: { id: ownerId } },
+          relations: ['document'],
+        });
+
+      if (userDoc?.document) {
+        document = userDoc.document;
+      }
+    }
+
+    if (!document) {
+      this.logger.warn(
+        `File request failed: Document ${documentId} not found for owner ${ownerId}`,
+      );
       throw new NotFoundException('Document not found or not owned by user');
     }
 
     try {
       await fs.access(document.fileRef);
     } catch {
+      this.logger.error(`File missing on disk: ${document.fileRef}`);
       throw new BadRequestException('Document file not found on server');
     }
 

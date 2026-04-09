@@ -75,13 +75,21 @@ export class CreateDocumentTables1764000000001 implements MigrationInterface {
       true,
     );
 
-    await queryRunner.createIndex(
-      'document',
-      new TableIndex({
-        name: 'IDX_document_content_hash',
-        columnNames: ['content_hash'],
-      }),
-    );
+    const documentTable = await queryRunner.getTable('document');
+    const hasDocumentContentHashIndex =
+      documentTable?.indices.some(
+        (index) => index.name === 'IDX_document_content_hash',
+      ) ?? false;
+
+    if (!hasDocumentContentHashIndex) {
+      await queryRunner.createIndex(
+        'document',
+        new TableIndex({
+          name: 'IDX_document_content_hash',
+          columnNames: ['content_hash'],
+        }),
+      );
+    }
 
     await queryRunner.createTable(
       new Table({
@@ -169,20 +177,45 @@ export class CreateDocumentTables1764000000001 implements MigrationInterface {
       true,
     );
 
-    await queryRunner.createForeignKeys('user_documents', [
-      new TableForeignKey({
-        columnNames: ['user_id'],
-        referencedTableName: 'users',
-        referencedColumnNames: ['id'],
-        onDelete: 'CASCADE',
-      }),
-      new TableForeignKey({
-        columnNames: ['document_id'],
-        referencedTableName: 'document',
-        referencedColumnNames: ['id'],
-        onDelete: 'CASCADE',
-      }),
-    ]);
+    const userDocumentsTable = await queryRunner.getTable('user_documents');
+    const missingUserDocumentForeignKeys: TableForeignKey[] = [];
+
+    if (
+      !userDocumentsTable?.foreignKeys.some((foreignKey) =>
+        foreignKey.columnNames.includes('user_id'),
+      )
+    ) {
+      missingUserDocumentForeignKeys.push(
+        new TableForeignKey({
+          columnNames: ['user_id'],
+          referencedTableName: 'users',
+          referencedColumnNames: ['id'],
+          onDelete: 'CASCADE',
+        }),
+      );
+    }
+
+    if (
+      !userDocumentsTable?.foreignKeys.some((foreignKey) =>
+        foreignKey.columnNames.includes('document_id'),
+      )
+    ) {
+      missingUserDocumentForeignKeys.push(
+        new TableForeignKey({
+          columnNames: ['document_id'],
+          referencedTableName: 'document',
+          referencedColumnNames: ['id'],
+          onDelete: 'CASCADE',
+        }),
+      );
+    }
+
+    if (missingUserDocumentForeignKeys.length > 0) {
+      await queryRunner.createForeignKeys(
+        'user_documents',
+        missingUserDocumentForeignKeys,
+      );
+    }
 
     await queryRunner.createTable(
       new Table({
@@ -203,20 +236,45 @@ export class CreateDocumentTables1764000000001 implements MigrationInterface {
       true,
     );
 
-    await queryRunner.createForeignKeys('document_chunks', [
-      new TableForeignKey({
-        columnNames: ['document_id'],
-        referencedTableName: 'document',
-        referencedColumnNames: ['id'],
-        onDelete: 'CASCADE',
-      }),
-      new TableForeignKey({
-        columnNames: ['chunk_id'],
-        referencedTableName: 'chunks',
-        referencedColumnNames: ['id'],
-        onDelete: 'CASCADE',
-      }),
-    ]);
+    const documentChunksTable = await queryRunner.getTable('document_chunks');
+    const missingDocumentChunkForeignKeys: TableForeignKey[] = [];
+
+    if (
+      !documentChunksTable?.foreignKeys.some((foreignKey) =>
+        foreignKey.columnNames.includes('document_id'),
+      )
+    ) {
+      missingDocumentChunkForeignKeys.push(
+        new TableForeignKey({
+          columnNames: ['document_id'],
+          referencedTableName: 'document',
+          referencedColumnNames: ['id'],
+          onDelete: 'CASCADE',
+        }),
+      );
+    }
+
+    if (
+      !documentChunksTable?.foreignKeys.some((foreignKey) =>
+        foreignKey.columnNames.includes('chunk_id'),
+      )
+    ) {
+      missingDocumentChunkForeignKeys.push(
+        new TableForeignKey({
+          columnNames: ['chunk_id'],
+          referencedTableName: 'chunks',
+          referencedColumnNames: ['id'],
+          onDelete: 'CASCADE',
+        }),
+      );
+    }
+
+    if (missingDocumentChunkForeignKeys.length > 0) {
+      await queryRunner.createForeignKeys(
+        'document_chunks',
+        missingDocumentChunkForeignKeys,
+      );
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

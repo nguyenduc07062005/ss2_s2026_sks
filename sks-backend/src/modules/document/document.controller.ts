@@ -25,6 +25,7 @@ import { DeleteDocumentDto } from './dtos/delete-document.dto';
 import { SearchDocumentDto } from './dtos/search-document.dto';
 import { UpdateDocumentNameDto } from './dtos/update-document-name.dto';
 import { JwtAuthGuard } from '../authentication/jwt/jwt-auth.guard';
+import { RagService } from '../rag/rag.service';
 
 @Controller('documents')
 export class DocumentController {
@@ -34,7 +35,10 @@ export class DocumentController {
     'text/plain',
   ];
 
-  constructor(private readonly documentService: DocumentService) {}
+  constructor(
+    private readonly documentService: DocumentService,
+    private readonly ragService: RagService,
+  ) {}
 
   private getUserId(req: ExpressRequest): string {
     return (req as ExpressRequest & { user: { userId: string } }).user.userId;
@@ -82,6 +86,7 @@ export class DocumentController {
       createDocumentDto,
       ownerId,
     );
+    await this.ragService.ensureDocumentIndexed(uploaded.id);
     const updatedList = await this.documentService.getDocuments(ownerId);
 
     return {
@@ -173,17 +178,17 @@ export class DocumentController {
     @Request() req: ExpressRequest,
   ) {
     const ownerId = this.getUserId(req);
-    const result = await this.documentService.searchDocuments(
+    const result = await this.ragService.searchDocuments(
       searchDto.q || '',
       ownerId,
-      Number(searchDto.limit) || 10,
+      {
+        folderId: searchDto.folderId,
+        page: Number(searchDto.page) || 1,
+        limit: Number(searchDto.limit) || 10,
+      },
     );
 
-    return {
-      message: 'Documents searched successfully',
-      relatedTitleDocuments: result.relatedTitleDocuments,
-      relatedContentDocuments: result.relatedContentDocuments,
-    };
+    return result;
   }
 
   @HttpCode(HttpStatus.OK)
@@ -195,7 +200,7 @@ export class DocumentController {
     @Query('limit') limit: string = '6',
   ) {
     const ownerId = this.getUserId(req);
-    const result = await this.documentService.getRelatedDocuments(
+    const result = await this.ragService.getRelatedDocuments(
       documentId,
       ownerId,
       Number(limit) || 6,
@@ -241,7 +246,7 @@ export class DocumentController {
       documentId,
       ownerId,
     );
-    res.sendFile(filePath, { root: '.' });
+    res.sendFile(filePath);
   }
 
   // --- Update document name ---

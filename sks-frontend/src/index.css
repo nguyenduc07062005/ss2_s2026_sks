@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Serif:wght@400;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,25 +7,236 @@
 @layer base {
   :root {
     color-scheme: light;
+    --sks-bg: #fafafa;
+    --sks-bg-soft: #f4f4f5;
+    --sks-surface: #ffffff;
+    --sks-border: rgba(0, 0, 0, 0.08);
+    --sks-border-hover: rgba(0, 0, 0, 0.15);
+    --sks-border-strong: rgba(0, 0, 0, 0.2);
+    --sks-text: #09090b;
+    --sks-text-soft: #52525b;
+    --sks-text-faint: #a1a1aa;
+    
+    /* Modern Tech-Cyan Primary */
+    --sks-primary: #0891b2;
+    --sks-primary-dark: #0e7490;
+    --sks-primary-light: #ecfeff;
+    
+    /* Premium Slate Accents */
+    --sks-accent: #0f172a;
+    
+    /* Crisp Dev Shadows */
+    --sks-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --sks-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.05);
+    --sks-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.08);
+    --sks-shadow-glow: 0 0 0 1px rgba(0,0,0,0.03), 0 2px 12px rgba(0,0,0,0.06);
+    --sks-shadow-float: 0 24px 60px -10px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.05);
+  }
+
+  * { box-sizing: border-box; }
+  
+  html {
+    scroll-behavior: smooth;
+    font-size: 16px;
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
-    font-family: 'Manrope', sans-serif;
+    margin: 0;
+    min-height: 100vh;
+    background: var(--sks-bg);
+    color: var(--sks-text);
+    font-family: 'Inter', -apple-system, sans-serif;
+    line-height: 1.6;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
 
-  #root {
-    @apply min-h-screen;
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', -apple-system, sans-serif;
+    margin: 0;
+    letter-spacing: -0.04em;
+    color: var(--sks-text);
+    font-weight: 700;
+  }
+
+  a { text-decoration: none; color: inherit; }
+  
+  ::selection {
+    background: rgba(0, 112, 243, 0.2);
+    color: var(--sks-primary);
+  }
+}
+
+@layer components {
+  /* Crisp Card Aesthetics */
+  .sks-card {
+    background: var(--sks-surface);
+    border: 1px solid var(--sks-border);
+    border-radius: 12px;
+    box-shadow: var(--sks-shadow-sm);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .sks-card:hover {
+    box-shadow: var(--sks-shadow-glow);
+    border-color: var(--sks-border-hover);
+  }
+
+  /* Ultra-modern Stark Buttons */
+  .sks-button-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 8px;
+    background: #000000;
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 0.75rem 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    transition: all 0.15s ease;
+    border: 1px solid #000000;
+  }
+
+  .sks-button-primary:hover {
+    background: #1f1f1f;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    transform: translateY(-1px);
+  }
+
+  .sks-button-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--sks-border-strong);
+    background: var(--sks-surface);
+    color: var(--sks-text);
+    font-weight: 500;
+    font-size: 0.95rem;
+    padding: 0.75rem 1.5rem;
+    box-shadow: var(--sks-shadow-sm);
+    transition: all 0.15s ease;
+  }
+
+  .sks-button-secondary:hover {
+    background: #f4f4f5;
+    border-color: #000000;
+  }
+
+  /* Precision Inputs */
+  .sks-input {
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid var(--sks-border);
+    background: var(--sks-surface);
+    padding: 0.75rem 1rem;
+    color: var(--sks-text);
+    font-family: inherit;
+    font-size: 0.95rem;
+    transition: all 0.2s ease;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);
+  }
+
+  .sks-input:focus {
+    border-color: #000000;
+    outline: none;
+    box-shadow: 0 0 0 1px #000000;
   }
 }
 
 @layer utilities {
-  .scrollbar-none {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+  /* High-end Dotted Grid / Spatial Canvas */
+  .sks-mesh-bg {
+    background-color: #fafafa;
+    background-image: radial-gradient(rgba(0, 0, 0, 0.08) 1px, transparent 1.5px);
+    background-size: 20px 20px;
+    position: relative;
   }
 
-  .scrollbar-none::-webkit-scrollbar {
-    display: none;
+  /* Glass Pane for Topbar */
+  .sks-glass-header {
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
+  }
+
+  .sks-glass-deep {
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(32px) saturate(160%);
+    -webkit-backdrop-filter: blur(32px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+  }
+
+  .sks-ai-gradient {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 50%, #3730a3 100%);
+  }
+
+  .sks-shadow-heavy {
+    box-shadow: 
+      0 1px 2px rgba(0,0,0,0.06), 
+      0 8px 16px rgba(0,0,0,0.06), 
+      0 16px 32px rgba(0,0,0,0.04);
+  }
+
+  .sks-bg-dots {
+    background-image: radial-gradient(rgba(0, 0, 0, 0.03) 0.5px, transparent 0.5px);
+    background-size: 24px 24px;
+  }
+
+  /* Animations */
+  @keyframes soft-reveal {
+    from { opacity: 0; transform: scale(0.98) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .animate-soft-reveal {
+    animation: soft-reveal 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.4s ease-out forwards;
+  }
+
+  /* Premium AI Button Effects */
+  @keyframes shimmer {
+    0% { transform: translateX(-150%) skewX(-20deg); }
+    50% { transform: translateX(150%) skewX(-20deg); }
+    100% { transform: translateX(150%) skewX(-20deg); }
+  }
+
+  .sks-ai-glow-btn {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  .sks-ai-glow-btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 200%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.3),
+      transparent
+    );
+    animation: shimmer 3s infinite;
+  }
+
+  .sks-ai-glow-btn:hover {
+    transform: translateY(-2px) scale(1.02);
   }
 }

@@ -1,0 +1,4 @@
+﻿SKS RAG test document.
+Folder-aware retrieval should only answer from this folder.
+The capital mentioned in this document is Hanoi.
+The summary should mention retrieval and grounding.

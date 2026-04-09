@@ -15,4 +15,16 @@ export class Chunk extends BaseEntity {
 
   @Column({ name: 'token_count', type: 'int' })
   tokenCount: number;
+
+  @Column({ name: 'embedding', type: 'vector', length: 3072, nullable: true })
+  embedding: number[] | string | null;
+
+  @Column({ name: 'embedding_model', type: 'text', nullable: true })
+  embeddingModel: string | null;
+
+  @Column({ name: 'page_number', type: 'int', nullable: true })
+  pageNumber: number | null;
+
+  @Column({ name: 'section_title', type: 'text', nullable: true })
+  sectionTitle: string | null;
 }

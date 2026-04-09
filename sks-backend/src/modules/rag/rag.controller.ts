@@ -1,0 +1,88 @@
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request as ExpressRequest } from 'express';
+import { AskRagDto } from './dtos/ask-rag.dto';
+import { GenerateSummaryDto } from './dtos/generate-summary.dto';
+import { RagService } from './rag.service';
+import { RagSummaryService } from './services/rag-summary.service';
+import { JwtAuthGuard } from '../authentication/jwt/jwt-auth.guard';
+
+@Controller('rag')
+@UseGuards(JwtAuthGuard)
+export class RagController {
+  constructor(
+    private readonly ragService: RagService,
+    private readonly ragSummaryService: RagSummaryService,
+  ) {}
+
+  private getUserId(req: ExpressRequest) {
+    return (req as ExpressRequest & { user: { userId: string } }).user.userId;
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('documents/:documentId/ask')
+  async askDocument(
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Body() dto: AskRagDto,
+    @Request() req: ExpressRequest,
+  ) {
+    const ownerId = this.getUserId(req);
+    const result = await this.ragService.askDocument(
+      documentId,
+      ownerId,
+      dto.question,
+    );
+
+    return {
+      message: 'Document question answered successfully',
+      ...result,
+    };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('documents/:documentId/summary')
+  async getDocumentSummary(
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Body() body: GenerateSummaryDto,
+    @Request() req: ExpressRequest,
+  ) {
+    const ownerId = this.getUserId(req);
+    const result = await this.ragSummaryService.generateSummary(
+      documentId,
+      ownerId,
+      body.language ?? 'en',
+    );
+
+    return {
+      message: 'Document summary generated successfully',
+      ...result,
+    };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('documents/:documentId/diagram')
+  async getDocumentDiagram(
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Request() req: ExpressRequest,
+  ) {
+    const ownerId = this.getUserId(req);
+    const result = await this.ragService.getDocumentDiagram(
+      documentId,
+      ownerId,
+    );
+
+    return {
+      message: 'Document diagram generated successfully',
+      ...result,
+    };
+  }
+}

@@ -38,9 +38,16 @@ const getFavorites = async () => {
   return response.data;
 };
 
-const searchDocuments = async (query, limit = 10) => {
+const searchDocuments = async (query, options = {}) => {
+  const normalizedOptions =
+    typeof options === 'number' ? { limit: options } : options;
   const response = await apiClient.get('/documents/search', {
-    params: { q: query, limit },
+    params: {
+      q: query,
+      limit: normalizedOptions.limit ?? 10,
+      page: normalizedOptions.page ?? 1,
+      ...(normalizedOptions.folderId ? { folderId: normalizedOptions.folderId } : {}),
+    },
   });
   return response.data;
 };

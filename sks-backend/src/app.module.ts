@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module';
 import { AuthenticationModule } from './modules/authentication/authentication.module';
 import { DocumentModule } from './modules/document/document.module';
 import { FolderModule } from './modules/folder/folder.module';
+import { RagModule } from './modules/rag/rag.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { FolderModule } from './modules/folder/folder.module';
     DocumentModule,
     FolderModule,
     LlmModule,
+    RagModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -48,7 +48,6 @@ const Login = () => {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
-      {/* Background blobs */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-40 -left-40 h-[36rem] w-[36rem] rounded-full bg-teal-400/20 blur-3xl" />
         <div className="absolute -bottom-40 -right-40 h-[36rem] w-[36rem] rounded-full bg-emerald-400/20 blur-3xl" />
@@ -84,7 +83,7 @@ const Login = () => {
                   type="email"
                   placeholder="name@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(event) => setEmail(event.target.value)}
                   required
                 />
               </div>
@@ -100,7 +99,7 @@ const Login = () => {
                     type={showPassword ? 'text' : 'password'}
                     placeholder="Enter password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(event) => setPassword(event.target.value)}
                     required
                   />
                   <button
@@ -118,12 +117,12 @@ const Login = () => {
                 </div>
               </div>
 
-              {error && (
+              {error ? (
                 <div className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="mt-0.5 h-4 w-4 shrink-0"><path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" /></svg>
                   {error}
                 </div>
-              )}
+              ) : null}
 
               <button
                 id="login-submit"
@@ -141,7 +140,7 @@ const Login = () => {
             </form>
 
             <p className="mt-8 text-center text-sm text-slate-500">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <Link className="font-semibold text-teal-600 hover:text-teal-500" to="/register">
                 Register Now
               </Link>
