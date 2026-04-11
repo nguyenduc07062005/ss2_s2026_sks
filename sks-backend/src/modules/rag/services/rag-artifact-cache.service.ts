@@ -4,6 +4,7 @@ import { DocumentRepository } from 'src/database/repositories/document.repositor
 import {
   DiagramArtifact,
   DocumentArtifactCache,
+  MindMapArtifact,
   SummaryArtifact,
   SummaryLanguage,
 } from '../types/rag.types';
@@ -28,6 +29,26 @@ export class RagArtifactCacheService {
     await this.saveArtifactCache(document, {
       summaryByLanguage: {
         [summary.language]: summary,
+      },
+    });
+  }
+
+  getMindMap(
+    document: Document,
+    language: SummaryLanguage,
+  ): MindMapArtifact | null {
+    return (
+      this.getArtifactCache(document).mindMapByLanguage?.[language] ?? null
+    );
+  }
+
+  async saveMindMap(
+    document: Document,
+    mindMap: MindMapArtifact,
+  ): Promise<void> {
+    await this.saveArtifactCache(document, {
+      mindMapByLanguage: {
+        [mindMap.summaryLanguage]: mindMap,
       },
     });
   }
@@ -88,6 +109,10 @@ export class RagArtifactCacheService {
       summaryByLanguage: {
         ...(currentArtifacts.summaryByLanguage ?? {}),
         ...(patch.summaryByLanguage ?? {}),
+      },
+      mindMapByLanguage: {
+        ...(currentArtifacts.mindMapByLanguage ?? {}),
+        ...(patch.mindMapByLanguage ?? {}),
       },
     };
     const nextExtraAttributes: Document['extraAttributes'] = {

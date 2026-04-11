@@ -231,9 +231,26 @@ export const buildPaginationItems = (currentPage, totalPages) => {
   }, []);
 };
 
+const getFileExtension = (value) => {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+
+  if (!normalized) {
+    return '';
+  }
+
+  const sanitized = normalized.split(/[?#]/)[0];
+  const lastSegment = sanitized.split(/[\\/]/).pop() || sanitized;
+
+  if (!lastSegment.includes('.')) {
+    return '';
+  }
+
+  return lastSegment.split('.').pop().toLowerCase();
+};
+
 export const getDocumentType = (document) => {
-  const source = document?.title || document?.fileRef || '';
-  const extension = source.includes('.') ? source.split('.').pop().toLowerCase() : '';
+  const extension =
+    getFileExtension(document?.title) || getFileExtension(document?.fileRef);
 
   if (extension === 'pdf') {
     return { label: 'PDF', tone: 'bg-rose-50 text-rose-600' };

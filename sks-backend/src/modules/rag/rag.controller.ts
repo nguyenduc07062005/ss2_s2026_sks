@@ -56,14 +56,35 @@ export class RagController {
     @Request() req: ExpressRequest,
   ) {
     const ownerId = this.getUserId(req);
-    const result = await this.ragSummaryService.generateSummary(
-      documentId,
-      ownerId,
-      body.language ?? 'en',
-    );
+      const result = await this.ragSummaryService.generateSummary(
+        documentId,
+        ownerId,
+        body.language ?? 'en',
+        body.forceRefresh ?? false,
+      );
 
     return {
       message: 'Document summary generated successfully',
+      ...result,
+    };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('documents/:documentId/mindmap')
+  async getDocumentMindMap(
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Body() body: GenerateSummaryDto,
+    @Request() req: ExpressRequest,
+  ) {
+    const ownerId = this.getUserId(req);
+    const result = await this.ragService.getDocumentMindMap(
+      documentId,
+      ownerId,
+      body?.language ?? 'en',
+    );
+
+    return {
+      message: 'Document mind map generated successfully',
       ...result,
     };
   }

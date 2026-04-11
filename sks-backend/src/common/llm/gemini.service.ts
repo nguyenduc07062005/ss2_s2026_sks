@@ -13,8 +13,7 @@ export class GeminiService {
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     this.generationModel =
-      this.configService.get<string>('GEMINI_TEXT_MODEL') ??
-      'gemini-2.5-flash';
+      this.configService.get<string>('GEMINI_TEXT_MODEL') ?? 'gemini-2.5-flash';
     this.embeddingModel =
       this.configService.get<string>('GEMINI_EMBEDDING_MODEL') ??
       'gemini-embedding-001';

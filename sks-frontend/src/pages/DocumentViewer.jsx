@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import MermaidPreview from '../components/documents/MermaidPreview.jsx';
+import { useDocViewer } from '../context/DocViewerContext.jsx';
+import MindMapCanvas from '../components/documents/MindMapCanvas.jsx';
 import {
   getFilePresentation,
 } from '../components/workspace/DocumentLibraryPanel.jsx';
@@ -15,7 +16,7 @@ import {
 import { rememberRecentDocument } from '../utils/recentDocuments.js';
 import {
   askDocument,
-  getDocumentDiagram,
+  getDocumentMindMap,
   getDocumentSummary,
 } from '../service/ragAPI.js';
 
@@ -66,10 +67,62 @@ const ExpandIcon = () => (
 /* ─── Tab Data ─── */
 const AI_TABS = [
   { id: 'summary', label: 'Summary', icon: '✨' },
-  { id: 'diagram', label: 'Diagram', icon: '📐' },
+  { id: 'diagram', label: 'Mind Map', icon: '🗺' },
   { id: 'ask', label: 'Ask AI', icon: '🧠' },
   { id: 'related', label: 'Related', icon: '🔗' },
 ];
+
+const MIND_MAP_KIND_LABELS = {
+  root: 'Core theme',
+  overview: 'Overview',
+  cluster: 'Knowledge cluster',
+  insight: 'Insight',
+  detail: 'Supporting detail',
+  takeaway: 'Takeaway',
+};
+
+const findMindMapNodeById = (node, targetId) => {
+  if (!node || !targetId) {
+    return null;
+  }
+
+  if (node.id === targetId) {
+    return node;
+  }
+
+  for (const child of node.children || []) {
+    const match = findMindMapNodeById(child, targetId);
+
+    if (match) {
+      return match;
+    }
+  }
+
+  return null;
+};
+
+const isMindMapNodeVisible = (node, targetId, expandedNodeIds = new Set(), showAllNodes = false, rootId = node?.id) => {
+  if (!node || !targetId) {
+    return false;
+  }
+
+  if (node.id === targetId) {
+    return true;
+  }
+
+  const shouldVisitChildren =
+    showAllNodes
+    || node.id === rootId
+    || expandedNodeIds.has(node.id);
+
+  if (!shouldVisitChildren) {
+    return false;
+  }
+
+  return (node.children || []).some((child) => (
+    isMindMapNodeVisible(child, targetId, expandedNodeIds, showAllNodes, rootId)
+  ));
+};
 
 const CloseIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
@@ -151,6 +204,7 @@ const RelatedCard = ({ document, onOpen }) => {
 const DocumentViewer = () => {
   const navigate = useNavigate();
   const { documentId } = useParams();
+  const { setDocInfo, setDocActions, clearDocViewer } = useDocViewer();
 
   /* Core state */
   const [documentData, setDocumentData] = useState(null);
@@ -168,7 +222,12 @@ const DocumentViewer = () => {
   const [summaryState, setSummaryState] = useState({ loading: false, error: '', data: null });
   const [selectedLanguage, setSelectedLanguage] = useState('vi');
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [isSummaryRefreshConfirmOpen, setIsSummaryRefreshConfirmOpen] = useState(false);
+  const [isMindMapModalOpen, setIsMindMapModalOpen] = useState(false);
   const [diagramState, setDiagramState] = useState({ loading: false, error: '', data: null });
+  const [selectedMindMapNodeId, setSelectedMindMapNodeId] = useState(null);
+  const [mindMapViewMode, setMindMapViewMode] = useState('explore');
+  const [expandedMindMapNodeIds, setExpandedMindMapNodeIds] = useState([]);
   const [askQuestion, setAskQuestion] = useState('');
   const [askState, setAskState] = useState({ loading: false, error: '', answer: '', sources: [] });
 
@@ -255,18 +314,27 @@ const DocumentViewer = () => {
     setActiveTab('summary');
     setSummaryState({ loading: false, error: '', data: null });
     setIsSummaryModalOpen(false);
+    setIsSummaryRefreshConfirmOpen(false);
+    setIsMindMapModalOpen(false);
     setDiagramState({ loading: false, error: '', data: null });
+    setSelectedMindMapNodeId(null);
+    setMindMapViewMode('explore');
+    setExpandedMindMapNodeIds([]);
     setAskQuestion('');
     setAskState({ loading: false, error: '', answer: '', sources: [] });
   }, [documentId]);
 
   /* ─── AI Logic ─── */
-  const loadSummary = useCallback(async (language = selectedLanguage) => {
+  const loadSummary = useCallback(async (language = selectedLanguage, options = {}) => {
     if (!documentId || summaryState.loading) return;
     try {
-      setSelectedLanguage(language);
+      const targetLanguage = language || selectedLanguage;
+      const forceRefresh = Boolean(options.forceRefresh);
+      setSelectedLanguage(targetLanguage);
       setSummaryState(s => ({ ...s, loading: true, error: '' }));
-      const result = await getDocumentSummary(documentId, language);
+      const result = await getDocumentSummary(documentId, targetLanguage, {
+        forceRefresh,
+      });
       setSummaryState({ 
         loading: false, 
         error: '', 
@@ -277,21 +345,33 @@ const DocumentViewer = () => {
     }
   }, [documentId, selectedLanguage, summaryState.loading]);
 
-  const loadDiagram = useCallback(async () => {
+  const loadDiagram = useCallback(async (language = selectedLanguage) => {
     if (!documentId || diagramState.loading) return;
     try {
+      setSelectedLanguage(language);
       setDiagramState(s => ({ ...s, loading: true, error: '' }));
-      const result = await getDocumentDiagram(documentId);
-      setDiagramState({ loading: false, error: '', data: { diagram: result.diagram || '', summary: result.summary || '', cached: Boolean(result.cached) } });
+      const result = await getDocumentMindMap(documentId, language);
+      setDiagramState({
+        loading: false,
+        error: '',
+        data: {
+          mindMap: result.mindMap || null,
+          summary: result.summary || '',
+          language: result.language || language,
+          generatedAt: result.generatedAt || '',
+          cached: Boolean(result.cached),
+        },
+      });
+      const rootId = result.mindMap?.id || 'root';
+      setSelectedMindMapNodeId(rootId);
+      setMindMapViewMode('explore');
+      setExpandedMindMapNodeIds(rootId ? [rootId] : []);
     } catch (err) {
-      setDiagramState({ loading: false, error: err.response?.data?.message || 'AI could not map this.', data: null });
+      setDiagramState({ loading: false, error: err.response?.data?.message || 'AI could not build this mind map.', data: null });
+      setSelectedMindMapNodeId(null);
+      setExpandedMindMapNodeIds([]);
     }
-  }, [documentId, diagramState.loading]);
-
-  useEffect(() => {
-    if (!documentId || !documentData) return;
-    if (activeTab === 'diagram' && !diagramState.data && !diagramState.loading) void loadDiagram();
-  }, [activeTab, diagramState.data, diagramState.loading, documentData, documentId, loadDiagram]);
+  }, [documentId, diagramState.loading, selectedLanguage]);
 
   /* ─── Actions ─── */
   const handleToggleFavorite = async (id) => {
@@ -301,14 +381,19 @@ const DocumentViewer = () => {
     } catch (err) { console.error('Favorite toggle failed:', err); }
   };
 
-  const handleOpenRawFile = async () => {
+  const handleOpenRawFile = useCallback(async () => {
     if (!documentId) return;
     try { await openDocumentFile(documentId); } catch (err) { console.error('Open fail:', err); }
-  };
+  }, [documentId]);
 
   const handleDownload = async (id, title) => {
     try { await downloadDocumentFile(id, title); } catch (err) { console.error('Download fail:', err); }
   };
+
+  /* ─── Sync doc info and actions (Simplified) ─── */
+  useEffect(() => {
+    return () => clearDocViewer();
+  }, [clearDocViewer]);
 
   const handleAsk = async () => {
     if (!documentId || !askQuestion.trim() || askState.loading) return;
@@ -325,28 +410,118 @@ const DocumentViewer = () => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleAsk(); }
   };
 
+  const selectedMindMapNode = useMemo(
+    () =>
+      findMindMapNodeById(
+        diagramState.data?.mindMap,
+        selectedMindMapNodeId || diagramState.data?.mindMap?.id || null,
+      ),
+    [diagramState.data?.mindMap, selectedMindMapNodeId],
+  );
+
+  const rootMindMapId = diagramState.data?.mindMap?.id || null;
+
+  const expandedMindMapNodeIdSet = useMemo(
+    () => new Set(expandedMindMapNodeIds),
+    [expandedMindMapNodeIds],
+  );
+
+  const handleMindMapNodeSelect = useCallback((nodeId) => {
+    setSelectedMindMapNodeId(nodeId);
+  }, []);
+
+  const handleMindMapNodeToggle = useCallback((nodeId) => {
+    if (mindMapViewMode === 'all') {
+      return;
+    }
+
+    const targetNode = findMindMapNodeById(diagramState.data?.mindMap, nodeId);
+
+    if (!targetNode?.children?.length) {
+      return;
+    }
+
+    const isCollapsing = expandedMindMapNodeIds.includes(nodeId);
+
+    if (
+      isCollapsing
+      && selectedMindMapNodeId
+      && selectedMindMapNodeId !== nodeId
+      && findMindMapNodeById(targetNode, selectedMindMapNodeId)
+    ) {
+      setSelectedMindMapNodeId(nodeId);
+    }
+
+    setExpandedMindMapNodeIds((currentIds) => (
+      currentIds.includes(nodeId)
+        ? currentIds.filter((currentId) => currentId !== nodeId)
+        : [...currentIds, nodeId]
+    ));
+  }, [diagramState.data?.mindMap, expandedMindMapNodeIds, mindMapViewMode, selectedMindMapNodeId]);
+
+  const handleMindMapViewModeChange = useCallback((mode) => {
+    setMindMapViewMode(mode);
+
+    if (mode === 'explore') {
+      const nextExpandedIds = expandedMindMapNodeIds.length > 0
+        ? expandedMindMapNodeIds
+        : (rootMindMapId ? [rootMindMapId] : []);
+
+      if (expandedMindMapNodeIds.length === 0 && rootMindMapId) {
+        setExpandedMindMapNodeIds(nextExpandedIds);
+      }
+
+      if (
+        selectedMindMapNodeId
+        && !isMindMapNodeVisible(
+          diagramState.data?.mindMap,
+          selectedMindMapNodeId,
+          new Set(nextExpandedIds),
+          false,
+          rootMindMapId,
+        )
+      ) {
+        setSelectedMindMapNodeId(rootMindMapId);
+      }
+    }
+  }, [
+    diagramState.data?.mindMap,
+    expandedMindMapNodeIds,
+    rootMindMapId,
+    selectedMindMapNodeId,
+  ]);
+
+  const handleMindMapLanguageChange = useCallback((language) => {
+    if (diagramState.data?.mindMap) {
+      void loadDiagram(language);
+      return;
+    }
+
+    setSelectedLanguage(language);
+  }, [diagramState.data?.mindMap, loadDiagram]);
+
   /* ─── Tab Components ─── */
   const renderSummary = () => {
     if (!summaryState.loading && !summaryState.data && !summaryState.error) return (
       <div className="flex flex-col items-center justify-center py-10 text-center animate-fade-in">
         <div className="relative mb-10">
-           <div className="absolute -inset-6 rounded-full bg-indigo-50/50 animate-pulse" />
-           <div className="relative flex h-20 w-20 items-center justify-center rounded-[24px] bg-black text-white text-3xl shadow-xl">✨</div>
+           <div className="absolute -inset-8 rounded-full bg-cyan-100/40 animate-pulse" />
+           <div className="relative flex h-20 w-20 items-center justify-center rounded-[28px] bg-gradient-to-br from-cyan-500 to-blue-600 text-white text-3xl shadow-2xl shadow-cyan-500/30">✨</div>
         </div>
         
-        <h3 className="text-[14px] font-black text-slate-900 uppercase tracking-widest mb-3">Asset Intelligence</h3>
+        <h3 className="text-[14px] font-[1000] text-slate-900 uppercase tracking-[0.2em] mb-3">Asset Intelligence</h3>
         <p className="text-[12px] font-medium text-slate-400 max-w-[240px] leading-relaxed mb-10">Select a target language to synthesize wisdom from this asset.</p>
         
-        <div className="mb-8 flex p-1.5 rounded-2xl bg-slate-100 ring-1 ring-inset ring-slate-200/20 w-full max-w-[240px]">
+        <div className="mb-8 flex p-1.5 rounded-2xl bg-slate-100/80 ring-1 ring-inset ring-slate-200/40 w-full max-w-[240px]">
           <button 
             onClick={() => setSelectedLanguage('vi')}
-            className={`flex-1 rounded-xl py-2 text-[10px] font-black uppercase tracking-widest transition-all ${selectedLanguage === 'vi' ? 'bg-white text-black shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            className={`flex-1 rounded-xl py-2 text-[10px] font-black uppercase tracking-widest transition-all ${selectedLanguage === 'vi' ? 'bg-white text-cyan-600 shadow-sm ring-1 ring-slate-200/50' : 'text-slate-400 hover:text-slate-600'}`}
           >
             Tiếng Việt
           </button>
           <button 
             onClick={() => setSelectedLanguage('en')}
-            className={`flex-1 rounded-xl py-2 text-[10px] font-black uppercase tracking-widest transition-all ${selectedLanguage === 'en' ? 'bg-white text-black shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            className={`flex-1 rounded-xl py-2 text-[10px] font-black uppercase tracking-widest transition-all ${selectedLanguage === 'en' ? 'bg-white text-cyan-600 shadow-sm ring-1 ring-slate-200/50' : 'text-slate-400 hover:text-slate-600'}`}
           >
             English
           </button>
@@ -354,7 +529,7 @@ const DocumentViewer = () => {
 
         <button 
           onClick={() => void loadSummary()}
-          className="group relative flex h-14 w-full items-center justify-center gap-4 overflow-hidden rounded-2xl bg-black px-8 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-2xl transition-all hover:scale-[1.02] active:scale-95"
+          className="group relative flex h-14 w-full items-center justify-center gap-4 overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 px-8 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-cyan-500/20 transition-all hover:scale-[1.02] active:scale-95"
         >
           <span>Generate Summary</span>
           <ArrowLeftIcon />
@@ -381,47 +556,46 @@ const DocumentViewer = () => {
     const { title, overview, key_points, conclusion } = summaryState.data;
     const activeSummaryLanguage = summaryState.data.language || selectedLanguage;
 
-    const handleResetSummary = () => {
-      setSummaryState({ loading: false, error: '', data: null });
-    };
-
     return (
-      <div className="space-y-10 animate-soft-reveal">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-6">
+      <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 text-sm shadow-sm ring-1 ring-indigo-100/50">✦</div>
-             <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em]">Synthesis Report</h3>
+             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20">
+               <SparklesIcon className="h-5 w-5" />
+             </div>
+             <div className="flex flex-col">
+                <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">Summary</h3>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">AI Summary</span>
+             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex rounded-xl bg-slate-100 p-1">
+            <div className="flex rounded-xl bg-slate-100 p-1 ring-1 ring-slate-200/40">
               <button
                 type="button"
                 onClick={() => void loadSummary('vi')}
-                className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${activeSummaryLanguage === 'vi' ? 'bg-white text-black shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}
+                className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${activeSummaryLanguage === 'vi' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}
               >
                 VI
               </button>
               <button
                 type="button"
                 onClick={() => void loadSummary('en')}
-                className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${activeSummaryLanguage === 'en' ? 'bg-white text-black shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}
+                className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${activeSummaryLanguage === 'en' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}
               >
                 EN
               </button>
             </div>
-            <button 
-              onClick={handleResetSummary}
-              className="group flex h-9 px-4 items-center gap-2 rounded-xl text-slate-400 transition-all hover:bg-slate-50 hover:text-black"
-              title="Re-analyze"
+            <button
+              type="button"
+              onClick={() => setIsSummaryRefreshConfirmOpen(true)}
+              className="rounded-xl bg-slate-100 px-3.5 py-2 text-[9px] font-[1000] uppercase tracking-[0.15em] text-slate-500 ring-1 ring-slate-200/40 transition-all hover:bg-white hover:text-cyan-600 hover:shadow-sks-soft"
+              title="Create a new summary for the current language"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.451a.75.75 0 0 0 0-1.5H4.25a.75.75 0 0 0-.75.75v4a.75.75 0 0 0 1.5 0v-2.62l.515.515a7 7 0 0 0 12.007-4.904.75.75 0 0 0-1.5 0ZM4.688 8.576a5.5 5.5 0 0 1 9.201-2.466l.312.311h-2.451a.75.75 0 0 0 0 1.5H15.75a.75.75 0 0 0 .75-.75v-4a.75.75 0 0 0-1.5 0v2.62l-.515-.515a7 7 0 0 0-12.007 4.904.75.75 0 0 0 1.5 0Z" clipRule="evenodd" />
-              </svg>
-              <span className="text-[9px] font-black uppercase tracking-widest">Retry</span>
+              New Summary
             </button>
             <button 
               onClick={() => setIsSummaryModalOpen(true)}
-              className="group flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-black hover:text-white shadow-sm"
+              className="group flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-400 transition-all hover:bg-white hover:text-cyan-600 hover:shadow-sks-soft"
               title="Focus Mode"
             >
               <ExpandIcon />
@@ -429,92 +603,294 @@ const DocumentViewer = () => {
           </div>
         </div>
 
-        <div className="space-y-8">
-          <h2 className="text-3xl font-black tracking-tight text-slate-900 leading-[1.15]">
-            {title}
-          </h2>
+        <div className="space-y-10">
+          <div className="space-y-4">
+            <h2 className="text-3xl font-[1000] tracking-tight text-slate-900 leading-[1.15]">
+              {title}
+            </h2>
+            <div className="h-1.5 w-16 bg-cyan-500 rounded-full" />
+          </div>
           
-          <div className="space-y-3">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Contextual Overview</p>
-            <p className="text-[16px] leading-relaxed font-medium text-slate-600">
+          <section className="space-y-4">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Overview</p>
+            <p className="text-[16px] leading-[1.8] font-medium text-slate-600">
               {overview}
             </p>
-          </div>
+          </section>
 
-          <div className="space-y-5">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Key Insights</p>
-            <div className="space-y-4">
+          <section className="space-y-6">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Key Findings</p>
+            <div className="grid grid-cols-1 gap-5">
               {key_points?.map((point, i) => (
                 <div key={i} className="flex gap-5 group">
-                  <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-500 transition-transform group-hover:scale-150" />
-                  <p className="text-[15px] leading-relaxed font-semibold text-slate-800">{point}</p>
+                  <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-[10px] font-black text-slate-400 ring-1 ring-slate-200 transition-all group-hover:bg-cyan-50 group-hover:text-cyan-600 group-hover:ring-cyan-200">
+                    {i + 1}
+                  </div>
+                  <p className="text-[15px] leading-relaxed font-bold text-slate-800">{point}</p>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
 
-          <div className="relative overflow-hidden rounded-[2.5rem] bg-slate-900 p-8 text-white shadow-2xl border border-white/5">
-            <div className="absolute top-0 right-0 p-6 opacity-20"><SparklesIcon className="text-cyan-400" /></div>
-            <div className="absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-cyan-500/10 blur-3xl" />
-            <p className="relative z-10 text-[10px] font-black text-cyan-400 uppercase tracking-[0.4em] mb-4">Core Takeaway</p>
+          <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 text-white shadow-[0_30px_60px_-15px_rgba(15,23,42,0.4)] border border-white/10">
+            <div className="absolute top-0 right-0 p-8 opacity-10"><SparklesIcon className="text-cyan-400 h-16 w-16" /></div>
+            <div className="absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-cyan-500/20 blur-3xl opacity-30" />
+            <p className="relative z-10 text-[9px] font-black text-cyan-400 uppercase tracking-[0.4em] mb-4">Conclusion</p>
             <p className="relative z-10 text-xl font-bold leading-relaxed italic text-slate-50 tracking-tight">
               "{conclusion}"
             </p>
           </div>
+
         </div>
       </div>
     );
   };
 
-  const renderDiagram = () => {
-    if (diagramState.loading) return <Skeleton className="h-64 w-full" />;
-    if (diagramState.error) return <InlineAlert tone="error">{diagramState.error}</InlineAlert>;
-    if (!diagramState.data) return null;
+  const renderMindMapNodeDetail = (mode = 'sidebar') => {
+    if (!selectedMindMapNode) {
+      return null;
+    }
+
+    const detailLanguage = diagramState.data?.language || selectedLanguage;
+    const isVietnamese = detailLanguage === 'vi';
+    const childCount = selectedMindMapNode.children?.length || 0;
+    const summaryText = selectedMindMapNode.summary
+      || (childCount > 0
+        ? (isVietnamese
+          ? 'Nhanh nay gom cac y tiep theo cua tai lieu.'
+          : 'This branch groups the next ideas in the document.')
+        : (isVietnamese
+          ? 'Node nay la mot ghi chu cuoi cua nhanh hien tai.'
+          : 'This node captures a final idea in the current branch.'));
+
+    const containerClass = mode === 'floating'
+      ? 'pointer-events-auto w-full max-w-[340px] rounded-[24px] border border-white/80 bg-white/92 p-5 shadow-[0_30px_80px_-42px_rgba(15,23,42,0.55)] backdrop-blur-xl'
+      : 'rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_24px_70px_-46px_rgba(15,23,42,0.28)]';
+    const childPreviewNodes = selectedMindMapNode.children?.slice(0, 6) || [];
+    const helperText = selectedMindMapNode.id === rootMindMapId
+      ? (isVietnamese
+        ? 'Chon mot nhanh ben phai de hoc sau hon.'
+        : 'Select one branch to study the document in more depth.')
+      : childCount > 0
+        ? (mindMapViewMode === 'all'
+          ? (isVietnamese
+            ? `${childCount} node con dang hien.`
+            : `${childCount} child ${childCount === 1 ? 'node is' : 'nodes are'} visible.`)
+          : (isVietnamese
+            ? 'Nhan vao node hoac icon mat de mo nhanh tiep theo.'
+            : 'Tap the node or eye icon to open the next branch.'))
+        : (isVietnamese
+          ? 'Node nay khong con nhanh con.'
+          : 'This node does not have any child branches.');
+
     return (
-      <div className="space-y-5 animate-fade-in">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-sks-slate-400">Conceptual Map</span>
-          <span className="rounded-full bg-sks-primary-light px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-sks-primary">Vibrant</span>
+      <div className={containerClass}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[9px] font-black uppercase tracking-[0.24em] text-slate-400">
+              {isVietnamese ? 'Study note' : 'Study Note'}
+            </p>
+            <h4 className="mt-2 text-[17px] font-black leading-snug tracking-tight text-slate-950">
+              {selectedMindMapNode.label}
+            </h4>
+          </div>
+          <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-600">
+            {MIND_MAP_KIND_LABELS[selectedMindMapNode.kind] || 'Node'}
+          </span>
         </div>
-        <MermaidPreview chart={diagramState.data.diagram} />
-        {diagramState.data.summary && (
-          <div className="rounded-2xl border border-sks-slate-50 bg-sks-slate-50/50 p-5">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sks-slate-400 mb-3">Contextual Basis</p>
-            <p className="text-[13px] leading-relaxed text-sks-slate-600 italic font-medium">{diagramState.data.summary}</p>
+
+        <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
+          {summaryText}
+        </p>
+
+        {childPreviewNodes.length > 0 && (
+          <div className="mt-4">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">
+              {isVietnamese ? 'Next branches' : 'Next Branches'}
+            </p>
+            <div className="mt-2 space-y-1.5">
+              {childPreviewNodes.map((childNode) => (
+                <button
+                  key={childNode.id}
+                  type="button"
+                  onClick={() => handleMindMapNodeSelect(childNode.id)}
+                  className="block w-full rounded-xl bg-slate-50 px-3 py-2 text-left text-[12px] font-semibold text-slate-700 transition-all hover:bg-slate-100 hover:text-slate-950"
+                >
+                  {childNode.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
+
+        <p className="mt-4 text-[11px] font-semibold leading-relaxed text-slate-500">
+          {helperText}
+        </p>
+      </div>
+    );
+  };
+
+  const renderDiagram = () => {
+    const isShowingAllNodes = mindMapViewMode === 'all';
+
+    if (!diagramState.loading && !diagramState.data && !diagramState.error) {
+      return (
+        <div className="flex flex-col items-center justify-center py-10 text-center animate-fade-in">
+          <div className="relative mb-10">
+             <div className="absolute -inset-8 rounded-full bg-cyan-100/40 animate-pulse" />
+             <div className="relative flex h-20 w-20 items-center justify-center rounded-[28px] bg-gradient-to-br from-cyan-500 to-blue-600 text-white text-3xl shadow-2xl shadow-cyan-500/30">🗺</div>
+          </div>
+
+          <h3 className="text-[14px] font-[1000] text-slate-900 uppercase tracking-[0.2em] mb-3">Mind Map</h3>
+          <p className="text-[12px] font-medium text-slate-400 max-w-[240px] leading-relaxed mb-10">Select a target language to generate a knowledge network from this asset.</p>
+
+          <div className="mb-8 flex p-1.5 rounded-2xl bg-slate-100/80 ring-1 ring-inset ring-slate-200/40 w-full max-w-[240px]">
+            <button 
+              onClick={() => setSelectedLanguage('vi')}
+              className={`flex-1 rounded-xl py-2 text-[10px] font-black uppercase tracking-widest transition-all ${selectedLanguage === 'vi' ? 'bg-white text-cyan-600 shadow-sm ring-1 ring-slate-200/50' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Tiếng Việt
+            </button>
+            <button 
+              onClick={() => setSelectedLanguage('en')}
+              className={`flex-1 rounded-xl py-2 text-[10px] font-black uppercase tracking-widest transition-all ${selectedLanguage === 'en' ? 'bg-white text-cyan-600 shadow-sm ring-1 ring-slate-200/50' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              English
+            </button>
+          </div>
+
+          <button 
+            onClick={() => void loadDiagram(selectedLanguage)}
+            className="group relative flex h-14 w-full items-center justify-center gap-4 overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 px-8 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-cyan-500/20 transition-all hover:scale-[1.02] active:scale-95"
+          >
+            <span>Generate Mind Map</span>
+            <ArrowLeftIcon />
+          </button>
+        </div>
+      );
+    }
+
+    if (diagramState.loading) {
+      return (
+        <div className="space-y-4 animate-pulse">
+          <Skeleton className="h-36 w-full rounded-[28px]" />
+          <Skeleton className="h-[420px] w-full rounded-[30px]" />
+          <Skeleton className="h-32 w-full rounded-[24px]" />
+        </div>
+      );
+    }
+
+    if (diagramState.error) return <InlineAlert tone="error">{diagramState.error}</InlineAlert>;
+    if (!diagramState.data?.mindMap) return null;
+
+    return (
+      <div className="flex flex-col h-full space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        {/* Header & Controls */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20">
+              <span className="text-lg">🗺</span>
+            </div>
+            <div className="flex flex-col">
+              <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">Mind Map</h3>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Interactive View</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex p-1 rounded-xl bg-slate-100 ring-1 ring-slate-200/40">
+              <button
+                type="button"
+                onClick={() => handleMindMapLanguageChange('vi')}
+                className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                  selectedLanguage === 'vi' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'
+                }`}
+              >VI</button>
+              <button
+                type="button"
+                onClick={() => handleMindMapLanguageChange('en')}
+                className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                  selectedLanguage === 'en' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'
+                }`}
+              >EN</button>
+            </div>
+            <div className="flex p-1 rounded-xl bg-slate-100 ring-1 ring-slate-200/40">
+              <button
+                type="button"
+                onClick={() => handleMindMapViewModeChange('explore')}
+                className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                  !isShowingAllNodes ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'
+                }`}
+              >Explore</button>
+              <button
+                type="button"
+                onClick={() => handleMindMapViewModeChange('all')}
+                className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                  isShowingAllNodes ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'
+                }`}
+              >All</button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsMindMapModalOpen(true)}
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-cyan-500 hover:text-white transition-all ring-1 ring-slate-200/40"
+              title="Full Screen"
+            >
+              <ExpandIcon />
+            </button>
+          </div>
+        </div>
+
+        <div className="h-1.5 w-12 bg-cyan-500 rounded-full" />
+
+        {/* Canvas */}
+        <div className="relative rounded-[2rem] bg-slate-50/60 border border-slate-200/60 overflow-hidden min-h-[380px] shadow-inner">
+          <MindMapCanvas
+            mindMap={diagramState.data.mindMap}
+            selectedNodeId={selectedMindMapNode?.id}
+            expandedNodeIds={expandedMindMapNodeIdSet}
+            showAllNodes={isShowingAllNodes}
+            onNodeSelect={handleMindMapNodeSelect}
+            onNodeToggle={handleMindMapNodeToggle}
+            language={diagramState.data.language || selectedLanguage}
+            height={380}
+            compact
+          />
+        </div>
+
+        {/* Node Detail Card */}
+        {renderMindMapNodeDetail('sidebar')}
       </div>
     );
   };
 
   const renderAsk = () => (
     <div className="flex flex-col h-full gap-8">
-      <div className="flex-1 space-y-12 min-h-0">
+      <div className="flex-1 space-y-10 min-h-0 overflow-y-auto pr-2 scrollbar-none">
         {askState.answer && (
-          <div className="space-y-6 animate-soft-reveal">
+          <div className="space-y-8 animate-soft-reveal">
             <div className="flex justify-end">
-              <div className="max-w-[85%] rounded-[2rem] rounded-tr-none bg-gradient-to-br from-slate-900 to-slate-950 px-6 py-3 text-[14px] font-bold leading-relaxed text-white shadow-xl shadow-slate-900/10">
+              <div className="max-w-[85%] rounded-[2rem] rounded-tr-none bg-gradient-to-br from-slate-800 to-slate-900 px-6 py-4 text-[13px] font-bold leading-relaxed text-slate-100 shadow-xl border border-white/10">
                 {askQuestion}
               </div>
             </div>
             
             <div className="flex justify-start">
-              <div className="max-w-full space-y-3">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <div className="flex h-5 w-5 items-center justify-center rounded bg-slate-950 text-[7px] font-black text-white shadow-sm">AI</div>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-900">Knowledge Synthesis</span>
+              <div className="max-w-full space-y-4">
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-cyan-500 text-[8px] font-black text-white shadow-lg shadow-cyan-500/20">AI</div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-600">Knowledge Synthesis</span>
                 </div>
-                <div className="pl-3">
-                  <p className="whitespace-pre-wrap text-[15px] leading-[1.75] text-slate-700 font-medium tracking-tight">
+                <div className="pl-4 border-l-2 border-slate-100">
+                  <p className="whitespace-pre-wrap text-[15px] leading-[1.8] text-slate-700 font-medium tracking-tight">
                     {askState.answer}
                   </p>
                 </div>
                 
                 {askState.sources?.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pl-3 pt-0.5">
+                  <div className="flex flex-wrap gap-2 pl-4 pt-2">
                     {askState.sources.map((s, i) => (
-                      <div key={i} className="flex items-center gap-1.5 text-[8px] font-black text-indigo-500 bg-indigo-50/10 px-2.5 py-0.5 rounded-md uppercase tracking-wider border border-indigo-100/30">
-                        SOURCE {i+1} · P. {s.pageNumber || '—'}
+                      <div key={i} className="flex items-center gap-1.5 text-[9px] font-black text-indigo-500 bg-indigo-100/30 px-3 py-1 rounded-lg uppercase tracking-wider border border-indigo-100/50">
+                        Source Fragment {i+1}
                       </div>
                     ))}
                   </div>
@@ -525,22 +901,23 @@ const DocumentViewer = () => {
         )}
       </div>
 
-      <div className="sticky bottom-0 pt-4 bg-white/40 backdrop-blur-md">
+      <div className="shrink-0 pt-4 px-1 pb-6">
         <div className="relative group">
+          <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 rounded-[2.5rem] blur opacity-0 group-focus-within:opacity-100 transition-opacity duration-500" />
           <textarea
             ref={chatInputRef}
             value={askQuestion}
             onChange={(e) => setAskQuestion(e.target.value)}
             onKeyDown={handleAskKeyDown}
             rows={1}
-            placeholder="Consult the neural library..."
-            className="w-full resize-none rounded-[2rem] border border-slate-200 bg-slate-50/30 py-5 pl-8 pr-20 text-[14px] font-bold text-slate-900 placeholder:text-slate-300 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:shadow-2xl focus:shadow-cyan-500/5 focus:ring-8 focus:ring-cyan-500/5"
+            placeholder="Consult the research core..."
+            className="relative w-full resize-none rounded-[2.2rem] border border-slate-200 bg-white py-5 pl-8 pr-20 text-[14px] font-bold text-slate-900 placeholder:text-slate-300 outline-none transition-all focus:border-cyan-400 focus:shadow-2xl focus:shadow-cyan-500/5"
           />
           <button
             type="button"
             onClick={() => void handleAsk()}
             disabled={askState.loading || !askQuestion.trim()}
-            className="absolute bottom-2.5 right-2.5 flex h-12 w-12 items-center justify-center rounded-[1.25rem] bg-gradient-to-br from-cyan-600 to-blue-600 text-white shadow-xl shadow-cyan-600/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-20"
+            className="absolute bottom-2.5 right-2.5 flex h-12 w-12 items-center justify-center rounded-[1.25rem] bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-20"
           >
             {askState.loading ? (
                <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -555,85 +932,333 @@ const DocumentViewer = () => {
   );
 
   const renderRelated = () => (
-    <div className="space-y-3">
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sks-slate-400 px-1 mb-4">Semantic Associations</p>
-      {relatedDocuments.length === 0 ? (
-        <InlineAlert>No direct associations identified yet.</InlineAlert>
-      ) : (
-        relatedDocuments.map((d) => <RelatedCard key={d.id} document={d} onOpen={(id) => navigate(`/app/documents/${id}`)} />)
-      )}
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex flex-col">
+        <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">Semantic Links</h3>
+        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Cross-Reference Nodes</span>
+      </div>
+      <div className="space-y-3">
+        {relatedDocuments.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-10 bg-slate-50 rounded-[2rem] border border-dashed border-slate-200">
+            <div className="h-10 w-10 text-slate-200 mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-full h-full"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
+            </div>
+            <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">No structural associations</p>
+          </div>
+        ) : (
+          relatedDocuments.map((d) => <RelatedCard key={d.id} document={d} onOpen={(id) => navigate(`/app/documents/${id}`)} />)
+        )}
+      </div>
     </div>
   );
+
+  const renderMindMapModal = () => {
+    if (!diagramState.data?.mindMap) {
+      return null;
+    }
+
+    const diagramLanguage = diagramState.data.language || selectedLanguage;
+    const isShowingAllNodes = mindMapViewMode === 'all';
+
+    return (
+      <div className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/40 p-6 backdrop-blur-md animate-in fade-in duration-500">
+        <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[32px] border border-white/20 bg-white shadow-2xl animate-in zoom-in-95 duration-500">
+
+          {/* Header */}
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-100 px-8 bg-white/80 backdrop-blur-xl">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/10">
+                <span className="text-sm">🗺</span>
+              </div>
+              <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-900">Mind Map</h2>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex p-1 rounded-xl bg-slate-100 ring-1 ring-slate-200/40">
+                <button
+                  type="button"
+                  onClick={() => handleMindMapLanguageChange('vi')}
+                  className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                    diagramLanguage === 'vi' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                >VI</button>
+                <button
+                  type="button"
+                  onClick={() => handleMindMapLanguageChange('en')}
+                  className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                    diagramLanguage === 'en' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                >EN</button>
+              </div>
+
+              <div className="flex p-1 rounded-xl bg-slate-100 ring-1 ring-slate-200/40">
+                <button
+                  type="button"
+                  onClick={() => handleMindMapViewModeChange('explore')}
+                  className={`rounded-lg px-4 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                    !isShowingAllNodes ? 'bg-cyan-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                >Explore</button>
+                <button
+                  type="button"
+                  onClick={() => handleMindMapViewModeChange('all')}
+                  className={`rounded-lg px-4 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                    isShowingAllNodes ? 'bg-cyan-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                >Full View</button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void loadDiagram(selectedLanguage)}
+                className="flex h-8 items-center gap-2 rounded-xl bg-slate-100 px-4 text-[9px] font-black uppercase tracking-widest text-slate-600 ring-1 ring-slate-200/40 transition-all hover:bg-white hover:text-cyan-600 hover:shadow-sm"
+              >
+                <SparklesIcon />
+                <span className="hidden sm:inline">Regenerate</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsMindMapModalOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-all"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          </div>
+
+          {/* Visualization Canvas */}
+          <div className="relative min-h-0 flex-1 flex overflow-hidden bg-slate-50/40">
+            <MindMapCanvas
+              mindMap={diagramState.data.mindMap}
+              selectedNodeId={selectedMindMapNode?.id}
+              expandedNodeIds={expandedMindMapNodeIdSet}
+              showAllNodes={isShowingAllNodes}
+              onNodeSelect={handleMindMapNodeSelect}
+              onNodeToggle={handleMindMapNodeToggle}
+              language={diagramState.data.language || selectedLanguage}
+              height="100%"
+              compact={false}
+            />
+
+            {/* Interaction hints */}
+            <div className="absolute bottom-6 left-6 pointer-events-none">
+              <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-sm">
+                <div className="text-[10px] font-bold text-slate-400 flex flex-col gap-1">
+                  <span className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500" /> Click to select node</span>
+                  <span className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-blue-500" /> Use wheel to zoom</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Floating Node Detail */}
+            <div className="pointer-events-none absolute inset-x-6 bottom-6 flex flex-wrap items-end justify-end gap-6">
+              {renderMindMapNodeDetail('floating')}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderToolbar = () => {
+    return (
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/80 px-6 backdrop-blur-xl transition-all">
+        <div className="flex items-center gap-6 min-w-0">
+          <button
+            type="button"
+            onClick={() => navigate('/app')}
+            className="flex items-center gap-2 group whitespace-nowrap"
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-400 group-hover:bg-slate-200 group-hover:text-slate-900 transition-all">
+              <ArrowLeftIcon />
+            </div>
+            <span className="text-[12px] font-black tracking-wide text-slate-500 group-hover:text-slate-900 transition-colors hidden sm:inline">Workspace</span>
+          </button>
+
+          <div className="w-px h-6 bg-slate-200/80" />
+
+          {documentData && (
+            <div className="min-w-0 flex flex-col">
+              <h1 className="truncate text-[15px] font-[1000] tracking-tight text-slate-910 max-w-[200px] md:max-w-md lg:max-w-lg">
+                {documentData.title}
+              </h1>
+              {documentData.folderName && (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <div className="h-1 w-1 rounded-full bg-cyan-500" />
+                  <p className="text-[9px] font-black uppercase tracking-[0.25em] text-cyan-600 leading-none">
+                    {documentData.folderName}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-slate-100/50 border border-slate-200/40">
+            <button
+              onClick={handleOpenRawFile}
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-400 hover:bg-white hover:text-slate-900 hover:shadow-sm transition-all"
+              title="Open External"
+            >
+              <ExternalLinkIcon />
+            </button>
+            <button
+              onClick={() => handleDownload(documentId, documentData?.title)}
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-400 hover:bg-white hover:text-slate-900 hover:shadow-sm transition-all"
+              title="Download"
+            >
+              <DownloadIcon />
+            </button>
+            <button
+              onClick={() => handleToggleFavorite(documentData?.id)}
+              className={`flex h-8 w-8 items-center justify-center rounded-xl transition-all ${
+                documentData?.isFavorite
+                  ? 'bg-white text-amber-500 shadow-sm ring-1 ring-amber-100'
+                  : 'text-slate-400 hover:bg-white hover:text-amber-500 hover:shadow-sm'
+              }`}
+              title="Favorite"
+            >
+              <StarIcon filled={documentData?.isFavorite} />
+            </button>
+            
+            <div className="w-px h-5 bg-slate-200/80 mx-1" />
+
+            <button
+              onClick={() => setSidebarOpen(v => !v)}
+              className={`group relative flex h-8 items-center gap-2.5 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${
+                sidebarOpen
+                  ? 'bg-slate-900 text-white shadow-lg ring-1 ring-slate-800'
+                  : 'bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]'
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`h-3.5 w-3.5 ${sidebarOpen ? 'text-cyan-400' : 'text-white'}`}>
+                <path d="M15.98 1.804a1 1 0 0 0-1.96 0l-.24 1.192a1 1 0 0 1-.784.785l-1.192.238a1 1 0 0 0 0 1.962l1.192.238a1 1 0 0 1 .785.785l.238 1.192a1 1 0 0 0 1.962 0l.238-1.192a1 1 0 0 1 .785-.785l1.192-.238a1 1 0 0 0 0-1.962l-1.192-.238a1 1 0 0 1-.785-.785l-.238-1.192ZM6.949 5.684a1 1 0 0 0-1.898 0l-.683 2.051a1 1 0 0 1-.633.633l-2.051.683a1 1 0 0 0 0 1.898l2.051.684a1 1 0 0 1 .633.632l.683 2.051a1 1 0 0 0 1.898 0l.683-2.051a1 1 0 0 1 .633-.633l2.051-.683a1 1 0 0 0 0-1.898l-2.051-.683a1 1 0 0 1-.633-.633L6.95 5.684ZM13.949 13.684a1 1 0 0 0-1.898 0l-.184.551a1 1 0 0 1-.632.633l-.551.183a1 1 0 0 0 0 1.898l.551.183a1 1 0 0 1 .633.633l.183.551a1 1 0 0 0 1.898 0l.184-.551a1 1 0 0 1 .632-.633l.551-.183a1 1 0 0 0 0-1.898l-.551-.184a1 1 0 0 1-.633-.632l-.183-.551Z" />
+              </svg>
+              <span className="hidden lg:inline">Intelligence</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderSummaryModal = () => {
     if (!summaryState.data) return null;
     const { title, overview, key_points, conclusion } = summaryState.data;
 
     return (
-      <div className="fixed inset-0 z-[150] flex items-start justify-center bg-slate-950/40 px-6 py-24 backdrop-blur-md">
-        {/* Centered Modal Container */}
-        <div className="relative flex flex-col w-full max-w-5xl max-h-full rounded-[40px] border border-white/60 bg-white shadow-[0_45px_120px_-20px_rgba(15,23,42,0.35)] overflow-hidden animate-soft-reveal">
+      <div className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/40 p-6 backdrop-blur-md animate-in fade-in duration-500">
+        <div className="relative flex flex-col w-full max-w-3xl max-h-[85vh] rounded-[32px] border border-white/20 bg-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500">
           
-          {/* Elite Glass Header */}
-          <div className="flex h-20 shrink-0 items-center justify-between border-b border-slate-100/50 px-10 bg-white/70 backdrop-blur-xl">
-            <div className="flex items-center gap-6">
-              <button 
-                onClick={() => setIsSummaryModalOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-400 transition-all hover:bg-slate-900 hover:text-white"
-                title="Back to Workspace"
-              >
-                <ArrowLeftIcon />
-              </button>
-              <h2 className="text-[11px] font-[1000] uppercase tracking-[0.3em] text-slate-900">Summary</h2>
+          {/* Header */}
+          <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-100 px-8 bg-white/80 backdrop-blur-xl">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/10">
+                <SparklesIcon className="h-4 w-4" />
+              </div>
+              <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-900">Summary</h2>
             </div>
             <button 
                onClick={() => setIsSummaryModalOpen(false)}
-               className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-300 hover:bg-rose-50 hover:text-rose-600 transition-all"
+               className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-all"
             >
                <CloseIcon />
             </button>
           </div>
 
-          {/* Content Area (Scrollable) */}
-          <div className="flex-1 overflow-y-auto px-8 py-10 scrollbar-none">
-            <div className="space-y-12 animate-fade-up">
-              <header className="space-y-4">
-                <h1 className="text-3xl md:text-5xl font-black text-slate-900 leading-tight tracking-tight">
+          <div className="flex-1 overflow-y-auto px-8 md:px-12 py-10 scrollbar-none">
+            <div className="space-y-12 mb-6">
+              <div className="space-y-4">
+                <h1 className="text-3xl md:text-5xl font-[1000] text-slate-900 leading-[1.1] tracking-tight">
                   {title}
                 </h1>
-                <div className="h-1.5 w-16 bg-black rounded-full" />
-              </header>
+                <div className="h-1.5 w-20 bg-cyan-500 rounded-full" />
+              </div>
 
-              <section className="space-y-4">
-                <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-400">Contextual Overview</p>
+              <div className="space-y-4">
+                <p className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-400">Overview</p>
                 <p className="text-[18px] leading-relaxed font-medium text-slate-600">
                   {overview}
                 </p>
-              </section>
+              </div>
 
-              <section className="space-y-6">
-                <p className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-400">Key Insights</p>
-                <div className="grid grid-cols-1 gap-6">
+              <div className="space-y-8">
+                <p className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-400">Key Points</p>
+                <div className="grid gap-6">
                   {key_points?.map((point, i) => (
-                    <div key={i} className="flex gap-4 items-start">
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-[9px] font-black text-white">
+                    <div key={i} className="flex gap-6 group">
+                      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-[11px] font-black text-slate-400 ring-1 ring-slate-200 transition-all group-hover:bg-cyan-500 group-hover:text-white group-hover:ring-0">
                         {i + 1}
-                      </span>
-                      <p className="text-[16px] font-bold text-slate-800 leading-snug">
+                      </div>
+                      <p className="text-[17px] font-bold text-slate-800 leading-snug">
                         {point}
                       </p>
                     </div>
                   ))}
                 </div>
-              </section>
+              </div>
 
-              <section className="rounded-[2rem] bg-slate-950 p-10 text-white shadow-xl">
-                <p className="text-[8px] font-black uppercase tracking-[0.4em] text-slate-500 mb-4">Strategic Takeaway</p>
-                <p className="text-xl md:text-2xl font-bold italic leading-relaxed text-slate-100">
+              <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 text-white shadow-xl border border-white/5">
+                <div className="absolute top-0 right-0 p-8 opacity-10"><SparklesIcon className="text-cyan-400 h-16 w-16" /></div>
+                <div className="absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-cyan-500/20 blur-3xl opacity-30" />
+                <p className="relative z-10 text-[9px] font-black uppercase tracking-[0.4em] text-cyan-500 mb-6">Conclusion</p>
+                <p className="relative z-10 text-xl font-bold italic leading-relaxed text-slate-50 tracking-tight">
                   "{conclusion}"
                 </p>
-              </section>
+              </div>
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSummaryRefreshConfirmModal = () => {
+    if (!summaryState.data) return null;
+
+    const activeSummaryLanguage = summaryState.data.language || selectedLanguage;
+    const languageLabel = activeSummaryLanguage === 'vi' ? 'VI' : 'EN';
+
+    return (
+      <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/50 p-5 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="w-full max-w-md rounded-[2rem] border border-white/15 bg-white p-8 shadow-2xl animate-in zoom-in-95 duration-300">
+          <div className="flex items-start justify-between gap-6">
+            <div className="space-y-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.35em] text-slate-400">Confirm Refresh</p>
+              <h3 className="text-2xl font-[1000] tracking-tight text-slate-900">Create a new {languageLabel} summary?</h3>
+              <p className="text-[14px] leading-relaxed text-slate-600">
+                This will create a fresh summary and replace the current version for the selected language.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsSummaryRefreshConfirmOpen(false)}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-500"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+
+          <div className="mt-8 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setIsSummaryRefreshConfirmOpen(false)}
+              className="rounded-2xl border border-slate-200 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-900"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsSummaryRefreshConfirmOpen(false);
+                void loadSummary(activeSummaryLanguage, { forceRefresh: true });
+              }}
+              className="rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 px-6 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-cyan-500/20 transition-all hover:scale-[1.02] active:scale-95"
+            >
+              Confirm New Summary
+            </button>
           </div>
         </div>
       </div>
@@ -648,79 +1273,16 @@ const DocumentViewer = () => {
   }, [contentType, filePresentation.extension]);
 
   return (
-    <div className="flex flex-col overflow-hidden bg-white" style={{ height: 'calc(100vh - 80px)' }}>
-      {/* ELITE MINIMALIST TOOLBAR */}
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-8">
-        <div className="flex items-center gap-6 min-w-0">
-          <button
-            onClick={() => navigate('/app')}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:border-cyan-500 hover:text-cyan-600 hover:shadow-lg hover:shadow-cyan-500/10 active:scale-95"
-          >
-            <ArrowLeftIcon />
-          </button>
-          <div className="flex items-center gap-4 min-w-0">
-            <h1 className="truncate font-display text-lg font-extrabold tracking-tight text-slate-900">
-              {documentData?.title || 'Knowledge Asset'}
-            </h1>
-            <div className="hidden h-4 w-px bg-slate-200 sm:block" />
-            <div className="hidden items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 sm:flex">
-                {documentData?.folderName || 'General Workspace'}
-            </div>
-          </div>
-        </div>
+    <div className="flex h-full w-full overflow-hidden bg-white">
+      <div ref={containerRef} className="flex-1 flex overflow-hidden min-h-0">
+        {/* PREVIEW CANVAS */}
+        <main className="relative flex-1 min-w-0 flex flex-col overflow-hidden bg-slate-50/30 border-r border-slate-200/60">
+          {/* INTERNAL DOCUMENT TOOLBAR (Inside Document Area only) */}
+          {renderToolbar()}
 
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 sm:mr-2">
-             <button 
-              onClick={() => handleOpenRawFile()} 
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-50 hover:text-slate-900 transition-all"
-              title="Open External"
-             >
-                <ExternalLinkIcon />
-             </button>
-             <button 
-              onClick={() => handleDownload(documentId, documentData?.title)} 
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-50 hover:text-slate-900 transition-all"
-              title="Download"
-             >
-                <DownloadIcon />
-             </button>
-             <button
-                onClick={() => handleToggleFavorite(documentData?.id)}
-                className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
-                  documentData?.isFavorite 
-                  ? 'bg-amber-50 text-amber-500' 
-                  : 'text-slate-300 hover:bg-slate-50 hover:text-amber-500'
-                }`}
-                title="Favorite"
-              >
-                <StarIcon filled={documentData?.isFavorite} />
-              </button>
-          </div>
-          
-          <div className="h-8 w-px bg-slate-200 mx-2" />
-          
-          <button
-            onClick={() => setSidebarOpen(v => !v)}
-            className={`group flex h-10 items-center gap-3 rounded-xl px-5 text-[11px] font-[1000] uppercase tracking-[0.2em] transition-all shadow-sm ${
-              sidebarOpen 
-              ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-cyan-600/20' 
-              : 'border border-slate-200 bg-white text-slate-600 hover:border-cyan-300 hover:text-cyan-700'
-            }`}
-          >
-            <SparklesIcon className={sidebarOpen ? 'animate-pulse' : ''} />
-            <span>Intelligence</span>
-          </button>
-        </div>
-      </div>
-
-      <div ref={containerRef} className="flex-1 flex overflow-hidden">
-        {/* ELITE PREVIEW CANVAS */}
-        <main className="relative flex-1 min-w-0 overflow-hidden bg-slate-50" style={{ height: 'calc(100vh - 144px)' }}>
-           <div className="h-full w-full overflow-y-auto scrollbar-none sks-bg-dots">
-             <div className="min-h-full w-full bg-white overflow-hidden">
+          <div className="flex-1 w-full overflow-hidden">
               {loading ? (
-                <div className="flex h-96 items-center justify-center">
+                <div className="flex h-full items-center justify-center">
                   <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-100 border-t-cyan-600" />
                 </div>
               ) : error ? (
@@ -732,29 +1294,29 @@ const DocumentViewer = () => {
                   <p className="text-slate-500 font-medium max-w-xs">{error}</p>
                 </div>
               ) : canPreview && fileUrl ? (
-                <iframe src={fileUrl} className="h-screen min-h-full w-full border-0" title="Asset Preview" />
+                <iframe src={`${fileUrl}#toolbar=0`} className="h-full w-full border-0 scrollbar-none shadow-inner" title="Asset Preview" />
               ) : (
                 <div className="flex h-full flex-col items-center justify-center p-20 text-center animate-fade-in">
                   <div className={`flex h-20 w-20 items-center justify-center rounded-2xl text-[12px] font-black tracking-[0.2em] shadow-xl mb-10 ${filePresentation.accent.replace('bg-teal-50', 'bg-slate-900').replace('text-teal-700', 'text-white')}`}>
                     {filePresentation.label}
                   </div>
-                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-4">Neural Extraction Only</h2>
-                  <p className="text-slate-500 font-medium mb-12 max-w-sm mx-auto leading-relaxed">Previewing this asset format directly is not supported. Use the Intelligence Rail for summary and analysis.</p>
+                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-4">Preview Not Available</h2>
+                  <p className="text-slate-500 font-medium mb-12 max-w-sm mx-auto leading-relaxed">Preview for this file type is not available here. Use the side panel to read the summary or explore the mind map.</p>
                   <div className="flex gap-4 justify-center">
-                    <button onClick={() => handleOpenRawFile()} className="sks-button-secondary py-3.5 px-8 text-[11px] font-[1000] uppercase tracking-wider">Open External</button>
-                    <button onClick={() => handleDownload(documentId, documentData?.title)} className="sks-button-primary py-3.5 px-8 text-[11px] font-[1000] uppercase tracking-wider bg-gradient-to-r from-slate-900 to-slate-950">Download Asset</button>
+                    <button onClick={() => handleOpenRawFile()} className="rounded-2xl bg-slate-100 py-3.5 px-8 text-[10px] font-black uppercase tracking-wider text-slate-900 hover:bg-slate-200">Open External</button>
+                    <button onClick={() => handleDownload(documentId, documentData?.title)} className="rounded-2xl bg-slate-900 py-3.5 px-8 text-[10px] font-black uppercase tracking-wider text-white hover:shadow-xl">Download Asset</button>
                   </div>
                 </div>
               )}
-             </div>
            </div>
         </main>
+
 
         {/* RESIZER */}
         {sidebarOpen && (
           <div 
             onMouseDown={handleMouseDown} 
-            className="w-px shrink-0 cursor-col-resize bg-slate-200 hover:bg-black transition-colors relative"
+            className="w-px shrink-0 cursor-col-resize bg-slate-200 hover:bg-cyan-500 transition-colors relative z-30"
           >
             <div className="absolute inset-y-0 -left-1 -right-1" />
           </div>
@@ -763,38 +1325,37 @@ const DocumentViewer = () => {
         {/* SIDEBAR INTELLIGENCE */}
         {sidebarOpen && (
           <aside 
-            className="shrink-0 flex flex-col overflow-hidden bg-white border-l border-slate-200 animate-fade-in" 
+            className="shrink-0 flex flex-col overflow-hidden bg-white border-l border-slate-200 animate-in slide-in-from-right duration-500" 
             style={{ width: sidebarWidth, minWidth: 360, maxWidth: '65%', height: '100%' }}
           >
             {/* Sidebar Header */}
-            <div className="shrink-0 px-6 py-4 border-b border-slate-100">
-               <div className="flex items-center justify-between mb-3">
+             <div className="shrink-0 px-6 py-4 border-b border-slate-100/60 bg-white/50 backdrop-blur-md">
+               <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-600/20">
-                      <SparklesIcon className="h-4 w-4" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20">
+                      <SparklesIcon className="h-4.5 w-4.5" />
                     </div>
                     <div>
-                      <h2 className="text-sm font-black tracking-widest text-slate-900 leading-none uppercase">Intelligence</h2>
-                      <p className="hidden mt-1 text-[8px] font-black uppercase tracking-widest text-slate-400">Synthesis Hub</p>
-                    </div>
+                      <h2 className="text-[12px] font-[1000] tracking-[0.2em] text-slate-900 leading-none uppercase">AI ASSISTANT</h2>
+                    </div>  
                   </div>
                   <button 
                     onClick={() => setSidebarOpen(false)}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-slate-300 hover:bg-slate-50 hover:text-slate-900 transition-all"
+                    className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-all"
                   >
                     <CloseIcon />
                   </button>
                </div>
 
                {/* Segmented Control Tabs */}
-               <div className="flex p-1.5 rounded-2xl bg-slate-100/80 ring-1 ring-inset ring-slate-200/20">
+               <div className="flex p-1 rounded-2xl bg-slate-100/60 ring-1 ring-inset ring-slate-200/40">
                   {AI_TABS.map((tab) => (
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`relative flex flex-1 items-center justify-center gap-2 rounded-xl py-2 text-[9px] font-[1000] uppercase tracking-widest transition-all duration-300 ${
+                      className={`relative flex flex-1 items-center justify-center gap-2 rounded-xl py-2 text-[9px] font-black uppercase tracking-[0.15em] transition-all duration-300 ${
                         activeTab === tab.id 
-                        ? 'bg-white text-cyan-700 shadow-sm ring-1 ring-cyan-100' 
+                        ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/50' 
                         : 'text-slate-400 hover:text-slate-600'
                       }`}
                     >
@@ -806,7 +1367,7 @@ const DocumentViewer = () => {
             </div>
 
             {/* AI Content Area */}
-            <div className="flex-1 overflow-y-auto px-6 py-5 pb-24 animate-soft-reveal" key={activeTab}>
+            <div className="flex-1 overflow-y-auto px-6 py-5 pb-24 animate-soft-reveal scrollbar-none" key={activeTab}>
                {activeTab === 'summary' && renderSummary()}
                {activeTab === 'diagram' && renderDiagram()}
                {activeTab === 'ask' && renderAsk()}
@@ -817,7 +1378,9 @@ const DocumentViewer = () => {
       </div>
 
       {/* ELITE SUMMARY MODAL */}
+      {isMindMapModalOpen && renderMindMapModal()}
       {isSummaryModalOpen && renderSummaryModal()}
+      {isSummaryRefreshConfirmOpen && renderSummaryRefreshConfirmModal()}
     </div>
   );
 };

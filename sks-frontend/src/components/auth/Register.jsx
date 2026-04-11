@@ -75,20 +75,20 @@ const Register = () => {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 h-[36rem] w-[36rem] rounded-full bg-indigo-400/20 blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 h-[36rem] w-[36rem] rounded-full bg-violet-400/20 blur-3xl" />
+        <div className="absolute -top-40 -right-40 h-[36rem] w-[36rem] rounded-full bg-cyan-400/20 blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 h-[36rem] w-[36rem] rounded-full bg-sky-400/20 blur-3xl" />
       </div>
 
-      <section className="relative grid w-full max-w-6xl overflow-hidden rounded-3xl shadow-2xl shadow-indigo-900/10 xl:grid-cols-[1.1fr_0.9fr]">
+      <section className="relative grid w-full max-w-3xl overflow-hidden rounded-3xl shadow-2xl shadow-sky-900/10 xl:grid-cols-[1fr_1fr]">
         <AuthShowcase
           title="Create Account"
-          description="Register now to start your smart knowledge management journey with AI."
+          description="Join our smart network."
           variant="blue"
         />
 
-        <div className="bg-white px-10 py-14 sm:px-14">
+        <div className="bg-white px-6 py-8 sm:px-8">
           <div className="mx-auto max-w-sm">
-            <p className="text-xs font-bold uppercase tracking-widest text-blue-600">
+            <p className="text-xs font-bold uppercase tracking-widest text-cyan-600">
               Account Registration
             </p>
             <h2 className="mt-2 text-4xl font-bold text-slate-900">
@@ -105,7 +105,7 @@ const Register = () => {
                 </label>
                 <input
                   id="register-name"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-base text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 placeholder:text-slate-400"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-base text-slate-900 outline-none transition focus:border-cyan-500 focus:bg-white focus:ring-4 focus:ring-cyan-100 placeholder:text-slate-400"
                   type="text"
                   name="name"
                   placeholder="e.g. John Doe"
@@ -138,7 +138,7 @@ const Register = () => {
                 <div className="relative">
                   <input
                     id="register-password"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 pr-12 text-base text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 placeholder:text-slate-400"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 pr-12 text-base text-slate-900 outline-none transition focus:border-cyan-500 focus:bg-white focus:ring-4 focus:ring-cyan-100 placeholder:text-slate-400"
                     type={showPassword ? 'text' : 'password'}
                     name="password"
                     placeholder="At least 6 characters"
@@ -194,7 +194,7 @@ const Register = () => {
 
               <button
                 id="register-submit"
-                className="w-full rounded-xl bg-blue-600 px-4 py-4 text-base font-bold text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-4 text-base font-bold text-white shadow-lg shadow-cyan-600/25 transition hover:from-cyan-500 hover:to-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                 type="submit"
                 disabled={isSubmitting}
               >
@@ -212,7 +212,7 @@ const Register = () => {
 
             <p className="mt-8 text-center text-sm text-slate-500">
               Already have an account?{' '}
-              <Link className="font-semibold text-blue-600 hover:text-blue-500" to="/login">
+              <Link className="font-semibold text-cyan-600 hover:text-cyan-500" to="/login">
                 Log In
               </Link>
             </p>

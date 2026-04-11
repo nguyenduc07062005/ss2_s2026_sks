@@ -29,6 +29,31 @@ export type SummaryArtifact = StructuredDocumentSummary & {
   language: SummaryLanguage;
   generatedAt: string;
   sources: RagSource[];
+  version?: number;
+};
+
+export type MindMapNodeKind =
+  | 'root'
+  | 'overview'
+  | 'cluster'
+  | 'insight'
+  | 'detail'
+  | 'takeaway';
+
+export type MindMapNode = {
+  id: string;
+  label: string;
+  summary: string;
+  kind: MindMapNodeKind;
+  children: MindMapNode[];
+};
+
+export type MindMapArtifact = {
+  root: MindMapNode;
+  summaryText: string;
+  generatedAt: string;
+  summaryLanguage: SummaryLanguage;
+  version: number;
 };
 
 export type DiagramArtifact = {
@@ -45,6 +70,7 @@ export type DocumentArtifactCache = {
     generatedAt: string;
   };
   summaryByLanguage?: Partial<Record<SummaryLanguage, SummaryArtifact>>;
+  mindMapByLanguage?: Partial<Record<SummaryLanguage, MindMapArtifact>>;
   diagram?: DiagramArtifact;
 };
 

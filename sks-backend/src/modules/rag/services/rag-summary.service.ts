@@ -17,7 +17,8 @@ import { RagArtifactCacheService } from './rag-artifact-cache.service';
 import { RagDocumentContextService } from './rag-document-context.service';
 import { RagIndexingService } from './rag-indexing.service';
 
-const MAX_SUMMARY_CONTEXT_CHUNKS = 12;
+const MAX_SUMMARY_CONTEXT_CHUNKS = 18;
+const SUMMARY_ARTIFACT_VERSION = 2;
 
 const SUMMARY_PROMPT_TEMPLATE = [
   'You are a senior academic and technical analyst.',
@@ -25,12 +26,15 @@ const SUMMARY_PROMPT_TEMPLATE = [
   'Do not hallucinate facts, numbers, claims, or conclusions that are not present in the context.',
   'If the context is partial, keep the summary partial and explicit.',
   'Write the final answer entirely in {languageName}.',
+  'Optimize for study value and fidelity to the source text.',
+  'Prefer concrete concepts, definitions, workflows, comparisons, mechanisms, and examples from the document.',
+  'Avoid generic filler, vague praise, and meta commentary.',
   '',
   'Output requirements:',
   '- title: a short professional title',
-  '- overview: 2 to 3 sentences explaining the document purpose and scope',
-  '- key_points: 4 to 6 concise bullet-style statements',
-  '- conclusion: 1 concise closing takeaway',
+  '- overview: 3 to 4 sentences explaining the document purpose, scope, and major themes',
+  '- key_points: 5 to 7 study-friendly points, each detailed enough to stand alone for revision',
+  '- conclusion: 1 to 2 sentences that synthesize the most important takeaway',
   '',
   'Document title: {documentTitle}',
   '',
@@ -42,12 +46,13 @@ const SUMMARY_JSON_FALLBACK_PROMPT_TEMPLATE = [
   'You are a senior academic and technical analyst.',
   'Summarize the document using ONLY the provided context.',
   'Do not add facts that are not present in the context.',
+  'Optimize for study value and fidelity to the source text.',
   'Return ONLY valid JSON with this exact structure:',
   '{{',
   '  "title": "short professional title",',
-  '  "overview": "2 to 3 sentences",',
-  '  "key_points": ["point 1", "point 2", "point 3", "point 4"],',
-  '  "conclusion": "1 concise takeaway"',
+  '  "overview": "3 to 4 sentences",',
+  '  "key_points": ["point 1", "point 2", "point 3", "point 4", "point 5"],',
+  '  "conclusion": "1 to 2 sentences"',
   '}}',
   'Write the full response in {languageName}.',
   '',
@@ -67,20 +72,22 @@ const SUMMARY_OUTPUT_SCHEMA = {
     },
     overview: {
       type: 'string',
-      description: 'A concise overview of the document in 2 to 3 sentences.',
+      description: 'A faithful overview of the document in 3 to 4 sentences.',
     },
     key_points: {
       type: 'array',
-      description: 'The most important ideas, methods, or findings.',
+      description:
+        'The most important ideas, methods, comparisons, or findings in study-friendly form.',
       items: {
         type: 'string',
       },
-      minItems: 4,
-      maxItems: 6,
+      minItems: 5,
+      maxItems: 7,
     },
     conclusion: {
       type: 'string',
-      description: 'A short closing takeaway grounded in the provided context.',
+      description:
+        'A closing takeaway grounded in the provided context, written in 1 to 2 sentences.',
     },
   },
   required: ['title', 'overview', 'key_points', 'conclusion'],
@@ -107,6 +114,7 @@ export class RagSummaryService {
     documentId: string,
     ownerId: string,
     language: SummaryLanguage = 'en',
+    forceRefresh = false,
   ): Promise<DocumentSummaryResponse> {
     const document = await this.ragDocumentContextService.ensureOwnedDocument(
       documentId,
@@ -117,7 +125,7 @@ export class RagSummaryService {
       language,
     );
 
-    if (cachedSummary) {
+    if (cachedSummary && !forceRefresh) {
       return {
         ...cachedSummary,
         cached: true,
@@ -160,6 +168,7 @@ export class RagSummaryService {
         document.title ?? 'Untitled document',
         representativeChunks,
       ),
+      version: SUMMARY_ARTIFACT_VERSION,
     };
 
     await this.ragArtifactCacheService.saveSummary(document, summaryArtifact);
@@ -190,7 +199,7 @@ export class RagSummaryService {
   }): Promise<StructuredDocumentSummary> {
     const baseModel = this.geminiService.createChatModel({
       temperature: 0.2,
-      maxOutputTokens: 900,
+      maxOutputTokens: 1400,
       topP: 0.85,
     });
 
@@ -293,7 +302,7 @@ export class RagSummaryService {
       ? safeSummary.key_points
           .map((point) => this.normalizeLine(point))
           .filter((point): point is string => Boolean(point))
-          .slice(0, 6)
+          .slice(0, 7)
       : [];
 
     return {

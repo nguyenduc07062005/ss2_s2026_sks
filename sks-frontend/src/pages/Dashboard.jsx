@@ -134,32 +134,30 @@ const ActionIconFrame = ({ children, tone = 'bg-sks-primary-light text-sks-prima
 
 const ModalShell = ({ title, children, onClose, panelClassName = 'max-w-xl' }) => (
   <div
-    className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-sks-slate-950/40 px-4 py-4 backdrop-blur-sm sm:items-center sm:py-8"
+    className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-950/60 px-6 py-10 pt-28 backdrop-blur-xl"
     onClick={onClose}
   >
     <div
-      className={`max-h-[calc(100vh-2rem)] w-full overflow-y-auto rounded-3xl border border-sks-slate-200 bg-white p-6 shadow-sks-heavy sm:p-7 ${panelClassName}`}
+      className={`relative w-full overflow-hidden rounded-[32px] border border-white/20 bg-white shadow-[0_45px_120px_-20px_rgba(15,23,42,0.5)] animate-in fade-in zoom-in duration-300 ${panelClassName}`}
       onClick={(event) => event.stopPropagation()}
     >
-      <div className="flex items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-8 py-5 flex items-center justify-between border-b border-white/10">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-sks-text-faint">
-            Workspace
-          </p>
-          <h2 className="mt-1 font-display text-2xl font-black tracking-tight text-sks-text">
+          <p className="text-[10px] font-black uppercase tracking-[0.4em] text-cyan-400">System</p>
+          <h2 className="mt-1 text-xl font-[1000] leading-tight text-white tracking-tight">
             {title}
           </h2>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-500 transition-all hover:scale-105 hover:bg-gray-200 hover:text-black"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-slate-300 transition-all hover:bg-rose-500/20 hover:text-rose-400 active:scale-90"
           aria-label="Close"
         >
-          <CloseIcon className="h-5 w-5" />
+          <CloseIcon className="h-5.5 w-5.5" />
         </button>
       </div>
-      <div className="mt-8">{children}</div>
+      <div className="p-8">{children}</div>
     </div>
   </div>
 );
@@ -1237,97 +1235,120 @@ const Dashboard = () => {
 
   return (
     <>
-      <div className="mx-auto max-w-[1440px] animate-fade-in">
-        {/* Breadcrumbs */}
-        <nav className="mb-4 flex flex-wrap items-center gap-2 text-[12px] font-bold tracking-tight text-gray-400">
-          <NavLink
-            to="/"
-            replace
-            className="transition-all hover:text-black hover:underline cursor-pointer px-1"
-          >
-            Home
-          </NavLink>
-          <span className="text-gray-300">/</span>
-          <NavLink
-            to="/app"
-            replace
-            className="font-black text-black transition-all hover:text-black hover:underline underline-offset-4 cursor-pointer px-1"
-          >
-            Workspace
-          </NavLink>
-          {folderTrail.slice(1).map((folder) => (
-            <span key={folder.id} className="contents">
-              <span className="text-gray-300">/</span>
-              <NavLink
-                to={`/app?folderId=${folder.id}`}
-                className="transition-all hover:text-black hover:underline cursor-pointer px-1"
-              >
-                {folder.name}
-              </NavLink>
-            </span>
-          ))}
-        </nav>
+      <div className="mx-auto max-w-[1440px] animate-fade-in pb-12">
+        {/* ═══ PREMIUM HERO HEADER ═══ */}
+        <div className="relative mb-10 overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-8 py-8 shadow-2xl">
+          {/* Mesh glow accents */}
+          <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-cyan-500/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-blue-500/15 blur-3xl" />
+          <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-72 w-72 rounded-full bg-indigo-500/10 blur-3xl" />
 
-        {/* Header Section */}
-        <div className="mb-12 flex flex-col gap-6 md:flex-row md:items-end md:justify-between relative z-10">
-          <div>
-            <h1 className="font-display text-5xl font-[1000] tracking-[0.01em] sm:text-6xl lg:text-7xl pb-4 px-1">
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 drop-shadow-sm inline-block">
+          {/* Breadcrumb inside banner */}
+          {folderTrail.length > 1 ? (
+            <nav className="mb-4 flex flex-wrap items-center gap-2 text-[11px] font-bold tracking-[0.15em] uppercase text-slate-500">
+              {folderTrail.slice(1).map((folder, index) => (
+                <span key={folder.id} className="contents">
+                  {index > 0 ? <span className="text-slate-600">/</span> : null}
+                  <NavLink to={`/app?folderId=${folder.id}`} className="transition-colors hover:text-cyan-400 cursor-pointer">
+                    {folder.name}
+                  </NavLink>
+                </span>
+              ))}
+            </nav>
+          ) : null}
+
+          {/* Title row */}
+          <div className="relative z-10 flex items-start justify-between gap-6">
+            <div className="flex-1">
+              <div className="mb-1 flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-cyan-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                  AI Active
+                </span>
+              </div>
+              <h1 className="text-4xl font-[1000] tracking-tight text-white sm:text-5xl">
                 {currentScopeLabel}
-              </span>
-            </h1>
-            <p className="mt-5 text-xl font-medium text-slate-600 max-w-2xl leading-relaxed">
-              Manage and organize your technical documents effortlessly with <span className="font-bold text-slate-800">SKS Intelligence</span>.
-            </p>
+              </h1>
+              <p className="mt-2 text-[14px] font-medium text-slate-400">
+                Manage and organize your documents with{' '}
+                <span className="font-bold text-cyan-400">SKS Intelligence</span>.
+              </p>
+
+              {/* Inline Stats */}
+              <div className="mt-5 flex items-center gap-4">
+                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 backdrop-blur-sm">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-cyan-400">
+                    <path d="M3.5 4.75A1.75 1.75 0 0 1 5.25 3h2.44c.464 0 .909.184 1.237.513l1.31 1.31c.14.14.33.219.528.219h4.985A1.75 1.75 0 0 1 17.5 6.792v1.041H2.5V4.75Z" />
+                    <path d="M2.5 9.333h15v5.917A1.75 1.75 0 0 1 15.75 17H4.25A1.75 1.75 0 0 1 2.5 15.25V9.333Z" />
+                  </svg>
+                  <span className="text-[12px] font-black text-white">{childFolders.length}</span>
+                  <span className="text-[11px] font-medium text-slate-400">Folders</span>
+                </div>
+                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 backdrop-blur-sm">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-blue-400">
+                    <path fillRule="evenodd" d="M4 4a2 2 0 0 1 2-2h4.586A2 2 0 0 1 12 2.586L15.414 6A2 2 0 0 1 16 7.414V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4Zm2 6a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2H7a1 1 0 0 1-1-1Zm1 3a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2H7Z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-[12px] font-black text-white">{documents.length}</span>
+                  <span className="text-[11px] font-medium text-slate-400">Documents</span>
+                </div>
+                {recentDocuments.length > 0 ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 backdrop-blur-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-emerald-400">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 0 0 0-1.5h-3.25V5Z" clipRule="evenodd" />
+                    </svg>
+                    <span className="text-[12px] font-black text-white">{recentDocuments.length}</span>
+                    <span className="text-[11px] font-medium text-slate-400">Recent</span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={() => setShowCreateFolderModal(true)}
+                className="flex items-center gap-2 h-10 px-4 rounded-xl bg-white/10 border border-white/20 text-white text-sm font-bold tracking-wide backdrop-blur-sm hover:bg-white/20 hover:border-white/30 transition-all duration-200"
+              >
+                <FolderAddIcon className="h-4 w-4 text-cyan-400" />
+                New Folder
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowUploadModal(true)}
+                className="flex items-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm font-[1000] tracking-wide shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50 hover:-translate-y-0.5 transition-all duration-200"
+              >
+                <UploadIcon className="h-4 w-4" />
+                Upload
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4">
-            <button
-              type="button"
-              onClick={() => setShowCreateFolderModal(true)}
-              className="flex items-center gap-2 h-[48px] px-6 rounded-xl bg-white/80 backdrop-blur-md border border-cyan-100/50 text-slate-700 font-bold tracking-wide shadow-sm hover:shadow-xl hover:shadow-cyan-500/5 hover:-translate-y-0.5 hover:border-cyan-200 transition-all duration-300"
-            >
-              <FolderAddIcon className="h-5 w-5 text-cyan-600" />
-              New Folder
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowUploadModal(true)}
-              className="flex items-center gap-2 h-[48px] px-6 rounded-xl bg-gradient-to-r from-cyan-600 via-cyan-600 to-blue-600 text-white font-[1000] tracking-wide shadow-lg shadow-cyan-600/30 hover:shadow-2xl hover:shadow-cyan-600/40 hover:-translate-y-1 transition-all duration-300"
-            >
-              <UploadIcon className="h-5 w-5 drop-shadow-sm" />
-              Upload Files
-            </button>
-          </div>
-        </div>
-
-        {/* Search Section */}
-        <div className="mb-14 relative z-10">
-          <form onSubmit={handleSearchSubmit} className="group relative w-full max-w-4xl">
-            <div className="absolute inset-0 -inset-y-1 bg-gradient-to-r from-cyan-400 via-blue-500 to-emerald-400 rounded-[28px] blur-xl opacity-[0.15] group-focus-within:opacity-[0.45] transition duration-700 pointer-events-none" />
-            <div className="relative flex items-center">
-              <div className="absolute left-6 text-slate-400 transition-colors duration-300 group-focus-within:text-cyan-600 z-20">
-                <SearchIcon className={`h-6 w-6 ${isSearching ? 'animate-pulse' : ''}`} />
+          {/* Embedded Search */}
+          <div className="relative z-10 mt-6">
+            <form onSubmit={handleSearchSubmit} className="group relative w-full max-w-xl">
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-cyan-400 transition-colors z-20">
+                <SearchIcon className={`h-4 w-4 ${isSearching ? 'animate-pulse' : ''}`} />
               </div>
               <input
                 type="text"
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Search resources, reports, or ask a question..."
-                className="h-[68px] w-full rounded-[24px] border border-white/80 bg-white/80 backdrop-blur-xl pl-16 pr-16 text-lg font-medium text-slate-900 shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all duration-300 placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/15"
+                placeholder="Search documents..."
+                className="h-10 w-full rounded-xl border border-white/10 bg-white/10 pl-10 pr-9 text-sm font-medium text-white placeholder:text-slate-500 backdrop-blur-sm focus:border-cyan-500/50 focus:bg-white/15 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all duration-200"
               />
               {searchInput ? (
                 <button
                   type="button"
                   onClick={handleClearSearch}
-                  className="absolute right-6 flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-400 transition-all hover:bg-rose-100 hover:text-rose-600 hover:rotate-90"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-slate-400 hover:bg-rose-500/30 hover:text-rose-300 transition-all"
                   title="Clear search"
                 >
-                  <CloseIcon className="h-5 w-5" />
+                  <CloseIcon className="h-3 w-3" />
                 </button>
               ) : null}
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
 
         {pageError ? (
@@ -1343,9 +1364,8 @@ const Dashboard = () => {
           {/* Recent Activity */}
           {shouldShowRecentDocuments ? (
             <section>
-              <div className="mb-6 flex items-center justify-between">
-                <h2 className="flex items-center gap-3 text-xl font-bold tracking-tight text-black">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#0070f3]"></span>
+              <div className="mb-5 flex items-center justify-between border-b border-slate-100 pb-3">
+                <h2 className="text-[11px] font-[1000] uppercase tracking-[0.2em] text-slate-400">
                   Recent Activity
                 </h2>
               </div>
@@ -1417,9 +1437,8 @@ const Dashboard = () => {
           {/* Folder Section */}
           {childFolders.length > 0 ? (
             <section>
-              <div className="mb-6 border-b border-slate-100 pb-4">
-                <h2 className="flex items-center gap-3 text-xl font-[1000] tracking-tight text-slate-900 border-none">
-                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-pulse"></span>
+              <div className="mb-5 border-b border-slate-100 pb-3">
+                <h2 className="text-[11px] font-[1000] uppercase tracking-[0.2em] text-slate-400">
                   Folders
                 </h2>
               </div>
@@ -1449,13 +1468,12 @@ const Dashboard = () => {
 
           {/* Document Section */}
           <section>
-            <div className="mb-6 flex items-center justify-between border-b border-slate-100 pb-4">
-              <h2 className="flex items-center gap-3 text-xl font-[1000] tracking-tight text-slate-900 border-none">
-                <span className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-pulse"></span>
+            <div className="mb-5 flex items-center justify-between border-b border-slate-100 pb-3">
+              <h2 className="text-[11px] font-[1000] uppercase tracking-[0.2em] text-slate-400">
                 Library
               </h2>
               {activeTotalPages > 1 ? (
-                <span className="text-xs font-[1000] uppercase tracking-widest text-slate-400">
+                <span className="text-[11px] font-[1000] uppercase tracking-widest text-slate-400">
                   Page {activeCurrentPage} of {activeTotalPages}
                 </span>
               ) : null}
@@ -1537,12 +1555,12 @@ const Dashboard = () => {
                         }
                       }
                     }}
-                    className={`flex h-10 min-w-[40px] items-center justify-center rounded-lg px-3 text-sm font-semibold transition-all ${
+                    className={`flex h-9 min-w-[36px] items-center justify-center rounded-lg px-3 text-sm font-bold transition-all ${
                       item.active
-                        ? 'bg-black text-white shadow-sks-md'
+                        ? 'bg-cyan-600 text-white shadow-md shadow-cyan-500/20'
                         : item.disabled
-                          ? 'cursor-default text-gray-300'
-                          : 'bg-white text-gray-600 border border-gray-200 shadow-sks-sm hover:border-black hover:text-black'
+                          ? 'cursor-default text-slate-300'
+                          : 'bg-white text-slate-600 border border-slate-200 shadow-sm hover:border-cyan-300 hover:text-cyan-600'
                     }`}
                   >
                     {item.label}
@@ -1601,69 +1619,85 @@ const Dashboard = () => {
 
       {showCreateFolderModal ? (
         <div
-          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-950/40 px-6 py-24 backdrop-blur-md"
+          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-950/60 px-6 py-10 pt-28 backdrop-blur-xl"
           onClick={() => setShowCreateFolderModal(false)}
         >
           <div
-            className="relative w-full max-w-[580px] rounded-[32px] border border-white/60 bg-white shadow-[0_45px_120px_-20px_rgba(15,23,42,0.35)] overflow-hidden"
+            className="relative w-full max-w-[620px] rounded-[32px] border border-white/20 bg-white shadow-[0_45px_120px_-20px_rgba(15,23,42,0.5)] overflow-hidden animate-in fade-in zoom-in duration-300"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="grid sm:grid-cols-[0.4fr_0.6fr]">
-              {/* Left Side */}
-              <div className="bg-[linear-gradient(145deg,rgba(236,254,255,0.95),rgba(248,250,252,0.98),rgba(239,246,255,0.95))] px-6 py-8 border-r border-slate-100/50">
-                <p className="text-[10px] font-black uppercase tracking-[0.4em] text-cyan-600/80">Organization</p>
-                <h2 className="mt-3 text-2xl font-[1000] leading-tight text-slate-900 tracking-tight">
-                  New <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">Folder</span>
-                </h2>
-                <div className="mt-6 flex flex-col gap-3">
-                  <div className="rounded-[20px] border border-white bg-white/60 px-4 py-3 shadow-[0_8px_20px_-4px_rgba(148,163,184,0.1)] backdrop-blur-sm">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Context</p>
-                    <p className="mt-1 text-xs font-bold text-slate-800">Folder Hierarchy</p>
-                  </div>
+            <div className="grid sm:grid-cols-[0.38fr_0.62fr]">
+              {/* ═══ LEFT PANEL: BRANDING ═══ */}
+              <div className="relative overflow-hidden bg-gradient-to-br from-cyan-50 via-slate-50 to-blue-50 px-7 py-6 border-r border-slate-100 flex flex-col justify-between">
+                {/* Mesh Glows */}
+                <div className="absolute -top-10 -left-10 h-32 w-32 rounded-full bg-cyan-400/20 blur-2xl" />
+                <div className="absolute top-1/2 -right-10 h-32 w-32 rounded-full bg-blue-400/10 blur-2xl" />
+
+                <div className="relative z-10">
+                  <p className="text-[10px] font-black uppercase tracking-[0.4em] text-cyan-600/80">Organization</p>
+                  <h2 className="mt-2 text-2xl font-[1000] leading-tight text-slate-900 tracking-tight">
+                    New <br />
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">Folder</span>
+                  </h2>
+                </div>
+
+                <div className="relative z-10 mt-8 flex flex-col gap-2">
+
                 </div>
               </div>
 
-              {/* Right Side */}
-              <div className="px-6 py-8 sm:px-8">
-                <div className="flex items-center justify-between mb-6">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Folder Form</p>
+              {/* ═══ RIGHT PANEL: FORM ═══ */}
+              <div className="px-7 py-6 sm:px-8">
+                <div className="flex items-center justify-between mb-8">
+                  <p className="text-[11px] font-[1000] uppercase tracking-[0.2em] text-slate-400">Folder Form</p>
                   <button
                     onClick={() => setShowCreateFolderModal(false)}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition hover:bg-rose-50 hover:text-rose-600"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100/80 text-slate-500 transition-all hover:bg-rose-50 hover:text-rose-600 hover:rotate-90 active:scale-90"
                   >
-                    <CloseIcon className="h-5 w-5" />
+                    <CloseIcon className="h-5.5 w-5.5" />
                   </button>
                 </div>
 
-                <div className="space-y-5">
+                <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 ml-1">Folder Name</label>
+                    <label className="text-[11px] font-[1000] uppercase tracking-wider text-slate-400 ml-1.5">Name</label>
                     <input
                       type="text"
                       value={createName}
                       onChange={(e) => setCreateName(e.target.value)}
-                      placeholder="e.g. Research Papers"
-                      className="w-full rounded-[18px] border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-500/5 placeholder:text-slate-300"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-5 py-3.5 text-sm font-bold text-slate-900 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-500/5 shadow-inner"
+                      placeholder="Folder title..."
+                      autoFocus
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 ml-1">Parent Location</label>
-                    <select
-                      value={createParentId}
-                      onChange={(e) => setCreateParentId(e.target.value)}
-                      className="w-full rounded-[18px] border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-500/5"
-                    >
-                      {folderChoices.map((folder) => (
-                        <option key={folder.id} value={folder.id}>
-                          {folder.label}
-                        </option>
-                      ))}
-                    </select>
+                    <label className="text-[11px] font-[1000] uppercase tracking-wider text-slate-400 ml-1.5">Parent Folder</label>
+                    <div className="relative">
+                      <select
+                        value={createParentId}
+                        onChange={(e) => setCreateParentId(e.target.value)}
+                        className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50/50 px-5 py-3.5 text-sm font-bold text-slate-900 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-500/5 cursor-pointer shadow-inner"
+                      >
+                        {folderChoices.map((folder) => (
+                          <option key={folder.id} value={folder.id}>
+                            {folder.label}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+                          <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    </div>
                   </div>
 
                   {createError && (
-                    <div className="rounded-2xl border border-rose-100 bg-rose-50/50 px-4 py-3 text-xs font-bold text-rose-600">
+                    <div className="flex items-center gap-2 rounded-2xl border border-rose-100 bg-rose-50/50 px-4 py-3.5 text-xs font-bold text-rose-600 animate-in slide-in-from-top-2 duration-300">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                      </svg>
                       {createError}
                     </div>
                   )}
@@ -1671,9 +1705,29 @@ const Dashboard = () => {
                   <button
                     onClick={() => void handleCreateFolder()}
                     disabled={creatingFolder}
-                    className="w-full rounded-[20px] bg-gradient-to-r from-cyan-600 to-blue-600 px-5 py-4 text-[15px] font-[1000] tracking-wide text-white shadow-xl shadow-cyan-600/20 transition-all hover:shadow-2xl hover:shadow-cyan-600/30 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-40"
+                    className="group relative w-full overflow-hidden rounded-[20px] bg-slate-900 p-px shadow-2xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed mt-2"
                   >
-                    {creatingFolder ? 'Creating...' : 'Create Folder'}
+                    <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 bg-[length:200%_100%] animate-gradient transition-opacity opacity-0 group-hover:opacity-100" />
+                    <div className={`relative flex h-[52px] items-center justify-center rounded-[19px] px-5 text-sm font-[1000] tracking-wide text-white transition-all ${creatingFolder ? 'bg-transparent' : 'bg-gradient-to-r from-cyan-600 to-blue-600'}`}>
+                      <span className="drop-shadow-md flex items-center gap-2">
+                        {creatingFolder ? (
+                          <>
+                            <svg className="h-4 w-4 animate-spin text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Creating...
+                          </>
+                        ) : (
+                          <>
+                            Create Folder
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 transition-transform group-hover:translate-x-1">
+                              <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
+                            </svg>
+                          </>
+                        )}
+                      </span>
+                    </div>
                   </button>
                 </div>
               </div>
@@ -1684,51 +1738,54 @@ const Dashboard = () => {
 
       {folderToRename ? (
         <div
-          className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto bg-slate-950/40 px-6 py-32 backdrop-blur-md"
+          className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto bg-slate-950/60 px-6 py-10 pt-28 backdrop-blur-xl"
           onClick={() => {
             setFolderToRename(null);
             setRenameFolderError('');
           }}
         >
           <div
-            className="relative w-full max-w-[500px] rounded-[32px] border border-white/60 bg-white shadow-[0_45px_120px_-20px_rgba(15,23,42,0.35)] overflow-hidden"
+            className="relative w-full max-w-[500px] rounded-[32px] border border-white/20 bg-white shadow-[0_45px_120px_-20px_rgba(15,23,42,0.5)] overflow-hidden animate-in fade-in zoom-in duration-300"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="bg-[linear-gradient(145deg,rgba(236,254,255,0.95),rgba(248,250,252,0.98),rgba(239,246,255,0.95))] px-8 py-6 border-b border-slate-100/50 flex items-center justify-between">
+            <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-8 py-5 border-b border-white/10 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.4em] text-cyan-600/80">Management</p>
-                <h2 className="mt-1 text-xl font-[1000] leading-tight text-slate-900 tracking-tight">Rename Folder</h2>
+                <p className="text-[10px] font-black uppercase tracking-[0.4em] text-cyan-400">Management</p>
+                <h2 className="mt-1 text-xl font-[1000] leading-tight text-white tracking-tight">Rename Folder</h2>
               </div>
               <button
                 onClick={() => setFolderToRename(null)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/60 text-slate-400 hover:text-rose-600 transition-colors"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-slate-300 hover:bg-rose-500/20 hover:text-rose-400 transition-all active:scale-90"
               >
-                <CloseIcon className="h-5 w-5" />
+                <CloseIcon className="h-5.5 w-5.5" />
               </button>
             </div>
             
             <div className="px-8 py-8 space-y-6">
               {renameFolderError && (
-                <div className="rounded-2xl border border-rose-100 bg-rose-50/50 px-4 py-3 text-xs font-bold text-rose-600">
+                <div className="rounded-2xl border border-rose-100 bg-rose-50/50 px-4 py-3.5 text-xs font-bold text-rose-600">
                   {renameFolderError}
                 </div>
               )}
               <div className="space-y-1.5">
-                <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 ml-1">New folder name</label>
+                <label className="text-[11px] font-[1000] uppercase tracking-wider text-slate-400 ml-1.5">New folder name</label>
                 <input
                   type="text"
                   value={renameFolderName}
                   onChange={(e) => setRenameFolderName(e.target.value)}
-                  className="w-full rounded-[18px] border border-slate-200 bg-slate-50/50 px-4 py-3.5 text-sm font-bold text-slate-900 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-500/5 shadow-inner"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm font-bold text-slate-900 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-500/5 shadow-inner"
                   autoFocus
                 />
               </div>
               <button
                 onClick={() => void handleRenameFolder()}
                 disabled={renamingFolder}
-                className="w-full rounded-[20px] bg-gradient-to-r from-cyan-600 to-blue-600 px-5 py-4 text-sm font-[1000] tracking-wide text-white shadow-xl shadow-cyan-600/20 transition-all hover:shadow-2xl hover:shadow-cyan-600/30 hover:-translate-y-0.5 active:translate-y-0"
+                className="group relative w-full overflow-hidden rounded-[24px] bg-slate-900 p-px shadow-2xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed"
               >
-                {renamingFolder ? 'Updating...' : 'Save Changes'}
+                <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 bg-[length:200%_100%] animate-gradient transition-opacity opacity-0 group-hover:opacity-100" />
+                <div className={`relative flex h-[58px] items-center justify-center rounded-[23px] px-5 text-base font-[1000] tracking-wide text-white transition-all ${renamingFolder ? 'bg-transparent' : 'bg-gradient-to-r from-cyan-600 to-blue-600'}`}>
+                  {renamingFolder ? 'Updating...' : 'Save Changes'}
+                </div>
               </button>
             </div>
           </div>
@@ -1743,24 +1800,24 @@ const Dashboard = () => {
             setFolderDeleteError('');
           }}
         >
-          <div className="mb-8 rounded-2xl bg-sks-slate-50 p-5">
-            <p className="text-base text-sks-slate-600">
-              Are you sure you want to delete <strong className="text-sks-slate-900">{folderToDelete.name}</strong>? 
-              This will remove all documents and subfolders within it.
+          <div className="mb-8 rounded-2xl bg-rose-50/50 border border-rose-100 p-6">
+            <p className="text-base font-bold text-slate-700 leading-relaxed">
+              Are you sure you want to delete <strong className="text-rose-600">{folderToDelete.name}</strong>? 
+              <br /><span className="text-sm font-medium text-slate-500 mt-2 block">This will remove all documents and subfolders within it. This action cannot be undone.</span>
             </p>
           </div>
 
           {folderDeleteError ? (
-            <div className="mb-5 rounded-xl bg-rose-50 px-5 py-4 text-sm font-medium text-rose-700">
+            <div className="mb-5 rounded-2xl bg-rose-50 px-5 py-4 text-sm font-bold text-rose-700 border border-rose-100">
               {folderDeleteError}
             </div>
           ) : null}
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <button
               type="button"
               onClick={() => setFolderToDelete(null)}
-              className="sks-button-secondary flex-1"
+              className="flex-1 h-[58px] rounded-2xl border border-slate-200 bg-white text-slate-600 font-[1000] transition-all hover:bg-slate-50 hover:text-slate-900 active:scale-95"
             >
               Cancel
             </button>
@@ -1768,9 +1825,9 @@ const Dashboard = () => {
               type="button"
               onClick={() => void handleDeleteFolderConfirm()}
               disabled={deletingFolder}
-              className="flex-1 rounded-full bg-rose-600 py-3 text-sm font-bold text-white transition-all hover:bg-rose-700 disabled:opacity-50"
+              className="flex-1 h-[58px] rounded-2xl bg-rose-600 text-white font-[1000] shadow-lg shadow-rose-600/20 transition-all hover:bg-rose-700 hover:shadow-rose-600/40 active:scale-95 disabled:opacity-50"
             >
-              {deletingFolder ? 'Deleting...' : 'Delete Permanently'}
+              {deletingFolder ? 'Deleting...' : 'Delete Forever'}
             </button>
           </div>
         </ModalShell>
@@ -1809,9 +1866,9 @@ const Dashboard = () => {
               type="button"
               onClick={() => void handleDeleteConfirm()}
               disabled={deleting}
-              className="flex-1 rounded-full bg-rose-600 py-3 text-sm font-bold text-white transition-all hover:bg-rose-700 disabled:opacity-50"
+              className="flex-1 h-[58px] rounded-2xl bg-rose-600 text-white font-[1000] shadow-lg shadow-rose-600/20 transition-all hover:bg-rose-700 hover:shadow-rose-600/40 active:scale-95 disabled:opacity-50"
             >
-              {deleting ? 'Deleting...' : 'Delete Document'}
+              {deleting ? 'Deleting...' : 'Delete Forever'}
             </button>
           </div>
         </ModalShell>
@@ -1819,61 +1876,80 @@ const Dashboard = () => {
 
       {moveTarget ? (
         <div
-          className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-slate-950/40 px-6 py-24 backdrop-blur-md"
-          onClick={() => {
-            setMoveTarget(null);
-            setMoveError('');
-          }}
+          className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto bg-slate-950/60 px-6 py-10 pt-28 backdrop-blur-xl"
+          onClick={() => setMoveTarget(null)}
         >
           <div
-            className="relative w-full max-w-[580px] rounded-[32px] border border-white/60 bg-white shadow-[0_45px_120px_-20px_rgba(15,23,42,0.35)] overflow-hidden"
+            className="relative w-full max-w-[620px] rounded-[32px] border border-white/20 bg-white shadow-[0_45px_120px_-20px_rgba(15,23,42,0.5)] overflow-hidden animate-in fade-in zoom-in duration-300"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="grid sm:grid-cols-[0.4fr_0.6fr]">
-              {/* Left Side */}
-              <div className="bg-[linear-gradient(145deg,rgba(236,254,255,0.95),rgba(248,250,252,0.98),rgba(239,246,255,0.95))] px-6 py-8 border-r border-slate-100/50">
-                <p className="text-[10px] font-black uppercase tracking-[0.4em] text-cyan-600/80">Relocation</p>
-                <h2 className="mt-3 text-2xl font-[1000] leading-tight text-slate-900 tracking-tight">
-                  Move <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">{moveTarget.type === 'folder' ? 'Folder' : 'Asset'}</span>
-                </h2>
-                <div className="mt-6 flex flex-col gap-3">
-                  <div className="rounded-[20px] border border-white bg-white/60 px-4 py-3 shadow-[0_8px_20px_-4px_rgba(148,163,184,0.1)] backdrop-blur-sm">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Target</p>
-                    <p className="mt-1 text-xs font-bold text-slate-800 truncate">{moveTarget.name}</p>
+            <div className="grid sm:grid-cols-[0.38fr_0.62fr]">
+              {/* ═══ LEFT PANEL ═══ */}
+              <div className="relative overflow-hidden bg-gradient-to-br from-cyan-50 via-slate-50 to-blue-50 px-8 py-8 border-r border-slate-100 flex flex-col justify-between">
+                <div className="absolute -top-10 -left-10 h-32 w-32 rounded-full bg-cyan-400/20 blur-2xl" />
+                <div className="absolute top-1/2 -right-10 h-32 w-32 rounded-full bg-blue-400/10 blur-2xl" />
+
+                <div className="relative z-10">
+                  <p className="text-[10px] font-black uppercase tracking-[0.4em] text-cyan-600/80">Relocation</p>
+                  <h2 className="mt-4 text-3xl font-[1000] leading-[1.1] text-slate-900 tracking-tight">
+                    Move <br />
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">{moveTarget.type === 'folder' ? 'Folder' : 'Asset'}</span>
+                  </h2>
+                </div>
+
+                <div className="relative z-10 mt-12 flex flex-col gap-3">
+                  <div className="rounded-2xl border border-white bg-white/70 px-4 py-3.5 shadow-[0_8px_30px_-5px_rgba(148,163,184,0.15)] backdrop-blur-md">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400/80">Current Selection</p>
+                    <p className="mt-1 text-xs font-[1000] text-slate-800 truncate">{moveTarget.name}</p>
                   </div>
                 </div>
               </div>
 
-              {/* Right Side */}
-              <div className="px-6 py-8 sm:px-8">
-                <div className="flex items-center justify-between mb-6">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Destination</p>
+              {/* ═══ RIGHT PANEL ═══ */}
+              <div className="px-8 py-8 sm:px-10">
+                <div className="flex items-center justify-between mb-8">
+                  <p className="text-[11px] font-[1000] uppercase tracking-[0.2em] text-slate-400">Destination</p>
                   <button
                     onClick={() => setMoveTarget(null)}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition hover:bg-rose-50 hover:text-rose-600"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100/80 text-slate-500 transition-all hover:bg-rose-50 hover:text-rose-600 hover:rotate-90 active:scale-90"
                   >
-                    <CloseIcon className="h-5 w-5" />
+                    <CloseIcon className="h-5.5 w-5.5" />
                   </button>
                 </div>
 
-                <div className="space-y-5">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 ml-1">New Location</label>
-                    <select
-                      value={moveDestinationId}
-                      onChange={(e) => setMoveDestinationId(e.target.value)}
-                      className="w-full rounded-[18px] border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-500/5 group"
-                    >
-                      {folderChoices.map((folder) => (
-                        <option key={folder.id} value={folder.id}>
-                          {folder.label}
-                        </option>
-                      ))}
-                    </select>
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-[1000] uppercase tracking-wider text-slate-400 ml-1.5 flex items-center gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                        <path d="M3.75 3A1.75 1.75 0 0 0 2 4.75v10.5c0 .966.784 1.75 1.75 1.75h12.5A1.75 1.75 0 0 0 18 15.25v-8.5A1.75 1.75 0 0 0 16.25 5h-4.836a.25.25 0 0 1-.177-.073L9.823 3.513A1.75 1.75 0 0 0 8.586 3H3.75Z" />
+                      </svg>
+                      New Location
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={moveDestinationId}
+                        onChange={(e) => setMoveDestinationId(e.target.value)}
+                        className="w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm font-bold text-slate-900 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-500/5 cursor-pointer shadow-inner"
+                      >
+                        {folderChoices.map((folder) => (
+                          <option key={folder.id} value={folder.id}>
+                            {folder.label}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+                          <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    </div>
                   </div>
 
                   {moveError && (
-                    <div className="rounded-2xl border border-rose-100 bg-rose-50/50 px-4 py-3 text-xs font-bold text-rose-600">
+                    <div className="flex items-center gap-2 rounded-2xl border border-rose-100 bg-rose-50/50 px-4 py-3.5 text-xs font-bold text-rose-600 animate-in slide-in-from-top-2 duration-300">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                      </svg>
                       {moveError}
                     </div>
                   )}
@@ -1881,9 +1957,29 @@ const Dashboard = () => {
                   <button
                     onClick={() => void handleMoveConfirm()}
                     disabled={moving}
-                    className="w-full rounded-[20px] bg-gradient-to-r from-cyan-600 to-blue-600 px-5 py-4 text-[15px] font-[1000] tracking-wide text-white shadow-xl shadow-cyan-600/20 transition-all hover:shadow-2xl hover:shadow-cyan-600/30 hover:-translate-y-0.5 active:translate-y-0"
+                    className="group relative w-full overflow-hidden rounded-[24px] bg-slate-900 p-px shadow-2xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed mt-4"
                   >
-                    {moving ? 'Moving...' : 'Move Assets Here'}
+                    <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 bg-[length:200%_100%] animate-gradient transition-opacity opacity-0 group-hover:opacity-100" />
+                    <div className={`relative flex h-[58px] items-center justify-center rounded-[23px] px-5 text-base font-[1000] tracking-wide text-white transition-all ${moving ? 'bg-transparent' : 'bg-gradient-to-r from-cyan-600 to-blue-600'}`}>
+                      <span className="drop-shadow-md flex items-center gap-2">
+                        {moving ? (
+                          <>
+                            <svg className="h-5 w-5 animate-spin text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Relocating...
+                          </>
+                        ) : (
+                          <>
+                            Confirm Relocation
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5 transition-transform group-hover:translate-x-1">
+                              <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
+                            </svg>
+                          </>
+                        )}
+                      </span>
+                    </div>
                   </button>
                 </div>
               </div>
@@ -1891,54 +1987,56 @@ const Dashboard = () => {
           </div>
         </div>
       ) : null}
-
       {docToRename ? (
         <div
-          className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-slate-950/40 px-6 py-32 backdrop-blur-md"
+          className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-slate-950/60 px-6 py-10 pt-28 backdrop-blur-xl"
           onClick={() => {
             setDocToRename(null);
             setRenameDocError('');
           }}
         >
           <div
-            className="relative w-full max-w-[500px] rounded-[32px] border border-white/60 bg-white shadow-[0_45px_120px_-20px_rgba(15,23,42,0.35)] overflow-hidden"
+            className="relative w-full max-w-[500px] rounded-[32px] border border-white/20 bg-white shadow-[0_45px_120px_-20px_rgba(15,23,42,0.5)] overflow-hidden animate-in fade-in zoom-in duration-300"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="bg-[linear-gradient(145deg,rgba(236,254,255,0.95),rgba(248,250,252,0.98),rgba(239,246,255,0.95))] px-8 py-6 border-b border-slate-100/50 flex items-center justify-between">
+            <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-8 py-5 border-b border-white/10 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.4em] text-cyan-600/80">Asset Config</p>
-                <h2 className="mt-1 text-xl font-[1000] leading-tight text-slate-900 tracking-tight">Rename Document</h2>
+                <p className="text-[10px] font-black uppercase tracking-[0.4em] text-cyan-400">Asset Config</p>
+                <h2 className="mt-1 text-xl font-[1000] leading-tight text-white tracking-tight">Rename Document</h2>
               </div>
               <button
                 onClick={() => setDocToRename(null)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/60 text-slate-400 hover:text-rose-600 transition-colors"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-slate-300 hover:bg-rose-500/20 hover:text-rose-400 transition-all active:scale-90"
               >
-                <CloseIcon className="h-5 w-5" />
+                <CloseIcon className="h-5.5 w-5.5" />
               </button>
             </div>
             
             <div className="px-8 py-8 space-y-6">
               {renameDocError && (
-                <div className="rounded-2xl border border-rose-100 bg-rose-50/50 px-4 py-3 text-xs font-bold text-rose-600">
+                <div className="rounded-2xl border border-rose-100 bg-rose-50/50 px-4 py-3.5 text-xs font-bold text-rose-600">
                   {renameDocError}
                 </div>
               )}
               <div className="space-y-1.5">
-                <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 ml-1">New asset title</label>
+                <label className="text-[11px] font-[1000] uppercase tracking-wider text-slate-400 ml-1.5">New asset title</label>
                 <input
                   type="text"
                   value={renameDocName}
                   onChange={(e) => setRenameDocName(e.target.value)}
-                  className="w-full rounded-[18px] border border-slate-200 bg-slate-50/50 px-4 py-3.5 text-sm font-bold text-slate-900 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-500/5 border-none shadow-inner"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm font-bold text-slate-900 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-500/5 shadow-inner"
                   autoFocus
                 />
               </div>
               <button
                 onClick={() => void handleRenameDocument()}
                 disabled={renamingDoc}
-                className="w-full rounded-[20px] bg-gradient-to-r from-cyan-600 to-blue-600 px-5 py-4 text-sm font-[1000] tracking-wide text-white shadow-xl shadow-cyan-600/20 transition-all hover:shadow-2xl hover:shadow-cyan-600/30 hover:-translate-y-0.5 active:translate-y-0"
+                className="group relative w-full overflow-hidden rounded-[24px] bg-slate-900 p-px shadow-2xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed"
               >
-                {renamingDoc ? 'Renaming...' : 'Update Title'}
+                <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 bg-[length:200%_100%] animate-gradient transition-opacity opacity-0 group-hover:opacity-100" />
+                <div className={`relative flex h-[58px] items-center justify-center rounded-[23px] px-5 text-base font-[1000] tracking-wide text-white transition-all ${renamingDoc ? 'bg-transparent' : 'bg-gradient-to-r from-cyan-600 to-blue-600'}`}>
+                  {renamingDoc ? 'Renaming...' : 'Update Title'}
+                </div>
               </button>
             </div>
           </div>

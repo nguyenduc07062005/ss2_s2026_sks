@@ -17,10 +17,10 @@
     --sks-text-soft: #52525b;
     --sks-text-faint: #a1a1aa;
     
-    /* Modern Tech-Cyan Primary */
-    --sks-primary: #0891b2;
-    --sks-primary-dark: #0e7490;
-    --sks-primary-light: #ecfeff;
+    /* Unified Cyan-Blue Primary */
+    --sks-primary: #0ea5e9;
+    --sks-primary-dark: #0284c7;
+    --sks-primary-light: #e0f2fe;
     
     /* Premium Slate Accents */
     --sks-accent: #0f172a;
@@ -100,9 +100,9 @@
   }
 
   .sks-button-primary:hover {
-    background: #1f1f1f;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    transform: translateY(-1px);
+    background: linear-gradient(135deg, #0284c7 0%, #1d4ed8 100%);
+    box-shadow: 0 8px 24px rgba(14, 165, 233, 0.35);
+    transform: translateY(-2px);
   }
 
   .sks-button-secondary {
@@ -238,5 +238,29 @@
 
   .sks-ai-glow-btn:hover {
     transform: translateY(-2px) scale(1.02);
+  }
+
+  /* Fade-up animation */
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-fade-up {
+    animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* Custom scrollbar */
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+  .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: rgba(0, 0, 0, 0.1);
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.2);
   }
 }

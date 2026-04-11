@@ -65,6 +65,96 @@ describe('RagSummaryService', () => {
     );
   });
 
+  it('reuses an existing cached summary even when it has no version', async () => {
+    const document = {
+      id: 'doc-1',
+      title: 'Debugging Notes',
+    };
+    const cachedSummary = {
+      title: 'Existing summary',
+      overview: 'Stored overview.',
+      key_points: ['Stored point'],
+      conclusion: 'Stored conclusion.',
+      language: 'en' as const,
+      generatedAt: '2026-04-11T00:00:00.000Z',
+      sources: [],
+    };
+
+    ragDocumentContextService.ensureOwnedDocument.mockResolvedValue(document);
+    ragArtifactCacheService.getSummary.mockReturnValue(cachedSummary);
+
+    const result = await service.generateSummary('doc-1', 'user-1', 'en');
+
+    expect(result).toEqual({
+      ...cachedSummary,
+      cached: true,
+    });
+    expect(
+      ragDocumentContextService.getRepresentativeChunks,
+    ).not.toHaveBeenCalled();
+    expect(ragArtifactCacheService.saveSummary).not.toHaveBeenCalled();
+  });
+
+  it('regenerates the summary when forceRefresh is true even if cache exists', async () => {
+    const document = {
+      id: 'doc-1',
+      title: 'Debugging Notes',
+    };
+    const representativeChunks = [
+      {
+        chunkIndex: 0,
+        chunkText: 'Relevant context',
+        pageNumber: 1,
+        sectionTitle: 'Introduction',
+      },
+    ];
+    const cachedSummary = {
+      title: 'Existing summary',
+      overview: 'Stored overview.',
+      key_points: ['Stored point'],
+      conclusion: 'Stored conclusion.',
+      language: 'en' as const,
+      generatedAt: '2026-04-11T00:00:00.000Z',
+      sources: [],
+    };
+
+    ragDocumentContextService.ensureOwnedDocument.mockResolvedValue(document);
+    ragArtifactCacheService.getSummary.mockReturnValue(cachedSummary);
+    ragDocumentContextService.getRepresentativeChunks.mockResolvedValue(
+      representativeChunks,
+    );
+    ragDocumentContextService.buildSummaryContext.mockReturnValue(
+      'Relevant context',
+    );
+    ragDocumentContextService.buildSources.mockReturnValue([]);
+
+    jest
+      .spyOn(
+        service as unknown as StructuredSummaryInternals,
+        'generateStructuredSummary',
+      )
+      .mockResolvedValue({
+        title: 'Fresh summary',
+        overview: 'Fresh overview.',
+        key_points: ['Fresh point'],
+        conclusion: 'Fresh conclusion.',
+      });
+
+    const result = await service.generateSummary(
+      'doc-1',
+      'user-1',
+      'en',
+      true,
+    );
+
+    expect(result.cached).toBe(false);
+    expect(result.title).toBe('Fresh summary');
+    expect(
+      ragDocumentContextService.getRepresentativeChunks,
+    ).toHaveBeenCalled();
+    expect(ragArtifactCacheService.saveSummary).toHaveBeenCalled();
+  });
+
   it('falls back to safe copy when structured summary generation returns no payload', async () => {
     const document = {
       id: 'doc-1',

@@ -1,16 +1,41 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ActionIconButton,
-  formatDateLabel,
-  getFilePresentation,
-  LoadingState,
-} from '../components/workspace/DocumentLibraryPanel.jsx';
-import {
   downloadDocumentFile,
   getFavorites,
   toggleFavorite,
 } from '../service/documentAPI.js';
+import {
+  formatDateLabel,
+  getDocumentType,
+} from './dashboardUtils.js';
+
+const StarIcon = ({ className = 'h-5 w-5', filled = false }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill={filled ? 'currentColor' : 'none'}
+    stroke="currentColor"
+    strokeWidth={filled ? undefined : '1.7'}
+    className={className}
+  >
+    <path d="M10 2.75 12.163 7.133l4.836.703-3.5 3.412.826 4.817L10 13.79l-4.325 2.275.826-4.817-3.5-3.412 4.836-.703L10 2.75Z" />
+  </svg>
+);
+
+const OpenIcon = ({ className = 'h-5 w-5' }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={className}>
+    <path d="M5.5 4A2.5 2.5 0 0 0 3 6.5v7A2.5 2.5 0 0 0 5.5 16h4.379a.75.75 0 0 0 0-1.5H5.5A1 1 0 0 1 4.5 13.5v-7a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v4.379a.75.75 0 0 0 1.5 0V6.5A2.5 2.5 0 0 0 12.5 4h-7Z" />
+    <path d="M11.75 10a.75.75 0 0 0 0 1.5h2.69l-5.72 5.72a.75.75 0 1 0 1.06 1.06l5.72-5.72v2.69a.75.75 0 0 0 1.5 0V10.75A.75.75 0 0 0 16.25 10h-4.5Z" />
+  </svg>
+);
+
+const DownloadIcon = ({ className = 'h-5 w-5' }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={className}>
+    <path d="M10.75 2.75a.75.75 0 0 0-1.5 0v7.19L7.03 7.72a.75.75 0 0 0-1.06 1.06l3.5 3.5a.75.75 0 0 0 1.06 0l3.5-3.5a.75.75 0 1 0-1.06-1.06l-2.22 2.22V2.75Z" />
+    <path d="M3.5 13.25a.75.75 0 0 0-1.5 0v1A2.75 2.75 0 0 0 4.75 17h10.5A2.75 2.75 0 0 0 18 14.25v-1a.75.75 0 0 0-1.5 0v1c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-1Z" />
+  </svg>
+);
 
 const Favorites = () => {
   const navigate = useNavigate();
@@ -56,130 +81,139 @@ const Favorites = () => {
     }
   };
 
-  if (loading && documents.length === 0) {
-    return <LoadingState />;
-  }
-
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 animate-fade-in">
-      {/* Header Section */}
-      <div className="mb-12 flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
-        <div className="animate-fade-up">
-          <h1 className="font-display text-4xl font-extrabold tracking-tight text-sks-slate-950 sm:text-6xl">
-            Your <span className="text-sks-primary">Favorites</span>
-          </h1>
-          <p className="mt-4 text-lg text-sks-slate-500">
-            A curated list of your most important documents and research assets.
-          </p>
-        </div>
+    <div className="mx-auto max-w-[1440px] animate-fade-in pb-12">
+      {/* ═══ PREMIUM HERO HEADER ═══ */}
+      <div className="relative mb-12 overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-8 py-10 shadow-2xl">
+        {/* Mesh glow accents */}
+        <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-amber-500/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-cyan-500/15 blur-3xl" />
+        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-72 w-72 rounded-full bg-indigo-500/10 blur-3xl" />
 
-        <div className="flex items-center gap-4 rounded-3xl bg-white p-5 shadow-sks-soft ring-1 ring-sks-slate-100 animate-fade-up" style={{ animationDelay: '0.1s' }}>
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-500">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-              <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clipRule="evenodd" />
-            </svg>
+        <div className="relative z-10 flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
+          <div className="flex-1">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-400 font-mono">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                Curated Collection
+              </span>
+            </div>
+            <h1 className="text-4xl font-[1000] tracking-tight text-white sm:text-6xl">
+              Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500">Favorites</span>
+            </h1>
           </div>
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-sks-slate-400">Total Assets</p>
-            <p className="text-2xl font-black text-sks-slate-900">{documents.length}</p>
+
+          <div className="flex shrink-0 items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400 shadow-lg shadow-amber-500/10">
+              <StarIcon className="h-6 w-6" filled />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Priority Assets</p>
+              <p className="text-2xl font-black text-white leading-none mt-1">{documents.length}</p>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Content Section */}
-      <div className="w-full">
+      {/* ═══ CONTENT SECTION ═══ */}
+      <div className="space-y-8">
         {error && (
-          <div className="mb-8 rounded-2xl border border-rose-200 bg-rose-50 px-6 py-4 text-sm font-medium text-rose-700 shadow-sm animate-fade-up">
+          <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 px-6 py-4 text-sm font-bold text-rose-400 backdrop-blur-md animate-in slide-in-from-top-4 duration-300">
             <div className="flex items-center gap-3">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-100 text-rose-600">!</span>
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500/20 text-rose-400">!</span>
               {error}
             </div>
           </div>
         )}
 
-        {documents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-32 text-center animate-fade-up" style={{ animationDelay: '0.2s' }}>
-            <div className="mb-8 flex h-24 w-24 items-center justify-center rounded-[2.5rem] bg-sks-slate-50 text-sks-slate-200 shadow-inner">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="h-10 w-10">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
-              </svg>
+        {loading && documents.length === 0 ? (
+          <div className="grid gap-6">
+            {[1, 2, 3].map((n) => (
+              <div key={n} className="h-32 w-full animate-pulse rounded-[2rem] bg-slate-900/5"></div>
+            ))}
+          </div>
+        ) : documents.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-32 text-center">
+            <div className="relative mb-8">
+              <div className="absolute inset-0 animate-pulse rounded-full bg-amber-500/10 blur-2xl"></div>
+              <div className="relative flex h-24 w-24 items-center justify-center rounded-[2.5rem] border border-white bg-white/50 shadow-xl backdrop-blur-md">
+                <StarIcon className="h-10 w-10 text-slate-300" />
+              </div>
             </div>
-            <h2 className="text-2xl font-bold text-sks-slate-900">Your collection is empty</h2>
-            <p className="mt-3 max-w-sm text-lg text-sks-slate-500">
-              Star your most important documents from the workspace to see them here.
+            <h2 className="text-3xl font-[1000] tracking-tight text-slate-900">Priority Index Empty</h2>
+            <p className="mt-4 max-w-sm text-lg font-medium text-slate-500">
+              Mark critical knowledge assets as favorites in the Workspace to populate this priority view.
             </p>
             <button 
               onClick={() => navigate('/app')}
-              className="mt-10 sks-button-primary"
+              className="mt-10 group relative overflow-hidden rounded-2xl bg-slate-900 px-8 py-4 text-sm font-black uppercase tracking-widest text-white shadow-2xl transition-all hover:scale-105 active:scale-95"
             >
-              Back to Workspace
+              <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-0 transition-opacity group-hover:opacity-100"></div>
+              <span className="relative">Back to Workspace</span>
             </button>
           </div>
         ) : (
-          <div className="grid gap-6">
+          <div className="grid gap-5">
             {documents.map((doc, index) => {
-              const file = getFilePresentation(doc);
-              const docFileTypeTone = file.accent.replace('bg-teal-50', 'bg-sks-primary-light').replace('text-teal-700', 'text-sks-primary');
+              const fileType = getDocumentType(doc);
+              const finalFileTypeTone = fileType.tone.replace('bg-teal-50', 'bg-gradient-to-br from-cyan-500 to-blue-500 shadow border-transparent').replace('text-teal-700', 'text-white');
               
               return (
                 <article 
                   key={doc.id}
-                  className="group flex flex-col gap-6 rounded-[2rem] border border-sks-slate-100 bg-white p-7 transition-all hover:-translate-y-1 hover:border-sks-primary/20 hover:shadow-sks-medium md:flex-row md:items-center animate-fade-up"
-                  style={{ animationDelay: `${0.1 + index * 0.05}s` }}
+                  className="group relative flex flex-col gap-6 rounded-[2rem] border border-slate-100 bg-white/40 p-6 backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:bg-white hover:shadow-2xl md:flex-row md:items-center animate-in fade-in slide-in-from-bottom-4"
+                  style={{ animationDelay: `${index * 50}ms` }}
                 >
-                  <div className="flex min-w-0 flex-1 items-start gap-6">
-                    <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-[10px] font-black tracking-widest transition-transform group-hover:scale-110 shadow-sm ${docFileTypeTone}`}>
-                      {file.label}
+                  <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-amber-400 to-orange-400 opacity-0 transition-opacity group-hover:opacity-100 rounded-b-[2rem]"></div>
+                  
+                  <div className="flex min-w-0 flex-1 items-center gap-6">
+                    <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/20 text-[10px] font-black tracking-widest transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6 ${finalFileTypeTone}`}>
+                      {fileType.label}
                     </div>
-
                     <div className="min-w-0 flex-1">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenDocument(doc.id)}
-                        className="truncate text-left text-2xl font-extrabold tracking-tight text-sks-slate-900 transition-colors hover:text-sks-primary"
-                      >
-                        {doc.title || 'Untitled Knowledge Asset'}
-                      </button>
-                      <div className="mt-4 flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-sks-slate-50 px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-sks-slate-400 ring-1 ring-inset ring-sks-slate-100 transition-all group-hover:bg-sks-primary-light group-hover:text-sks-primary group-hover:ring-sks-primary/20">
-                          {doc.formattedFileSize || 'Unknown size'}
+                      <div className="flex items-center gap-2">
+                        <h3 
+                          role="button"
+                          onClick={() => handleOpenDocument(doc.id)}
+                          className="truncate text-xl font-[1000] tracking-tight text-slate-900 transition-colors hover:text-amber-600 cursor-pointer"
+                        >
+                          {doc.title || 'Untitled Asset'}
+                        </h3>
+                        <div className="h-1.5 w-1.5 rounded-full bg-amber-400"></div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+                          {doc.formattedFileSize || '-'}
                         </span>
-                        <span className="rounded-full bg-sks-slate-50 px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-sks-slate-400 ring-1 ring-inset ring-sks-slate-100 transition-all group-hover:bg-sks-primary-light group-hover:text-sks-primary group-hover:ring-sks-primary/20">
-                          Added {formatDateLabel(doc.createdAt)}
+                        <span className="h-1 w-1 rounded-full bg-slate-200"></span>
+                        <span className="text-[11px] font-bold text-slate-400">
+                          {formatDateLabel(doc.createdAt)}
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 md:pl-6">
+                  <div className="flex items-center gap-2 md:border-l md:border-slate-100 md:pl-6">
                     <button
                       onClick={() => handleOpenDocument(doc.id)}
-                      className="flex h-12 w-12 items-center justify-center rounded-2xl border border-sks-slate-200 bg-white text-sks-slate-500 shadow-sks-soft transition-all hover:border-sks-primary/30 hover:bg-sks-primary-light hover:text-sks-primary"
-                      title="Open Document"
+                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition-all hover:bg-cyan-50 hover:text-cyan-600 active:scale-90"
+                      title="Read Document"
                     >
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                      </svg>
+                      <OpenIcon />
                     </button>
-                    
                     <button
                       onClick={() => handleDownloadDocument(doc.id, doc.title)}
-                      className="flex h-12 w-12 items-center justify-center rounded-2xl border border-sks-slate-200 bg-white text-sks-slate-500 shadow-sks-soft transition-all hover:border-sks-primary/30 hover:bg-sks-primary-light hover:text-sks-primary"
+                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition-all hover:bg-blue-50 hover:text-blue-600 active:scale-90"
                       title="Download"
                     >
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75v-2.25M7.5 11.25l4.5 4.5m0 0l4.5-4.5m-4.5 4.5V3" />
-                      </svg>
+                      <DownloadIcon />
                     </button>
-
                     <button
                       onClick={() => handleToggleFavorite(doc.id)}
-                      className="flex h-12 w-12 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 text-amber-500 shadow-sks-soft transition-all hover:scale-110 active:scale-95"
-                      title="Remove from Favorites"
+                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-500 border border-amber-100 transition-all hover:bg-amber-100 hover:scale-110 active:scale-90"
+                      title="Remove from Index"
                     >
-                      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                      </svg>
+                      <StarIcon filled />
                     </button>
                   </div>
                 </article>
