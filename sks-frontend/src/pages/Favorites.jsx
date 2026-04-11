@@ -86,25 +86,25 @@ const Favorites = () => {
       {/* ═══ PREMIUM HERO HEADER ═══ */}
       <div className="relative mb-12 overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-8 py-10 shadow-2xl">
         {/* Mesh glow accents */}
-        <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-amber-500/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-cyan-500/15 blur-3xl" />
-        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-72 w-72 rounded-full bg-indigo-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-cyan-500/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-blue-500/15 blur-3xl" />
+        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-72 w-72 rounded-full bg-sky-500/10 blur-3xl" />
 
         <div className="relative z-10 flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
           <div className="flex-1">
             <div className="mb-2 flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-400 font-mono">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-cyan-400 font-mono">
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-400"></span>
                 Curated Collection
               </span>
             </div>
             <h1 className="text-4xl font-[1000] tracking-tight text-white sm:text-6xl">
-              Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500">Favorites</span>
+              Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-400">Favorites</span>
             </h1>
           </div>
 
           <div className="flex shrink-0 items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400 shadow-lg shadow-amber-500/10">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-400 shadow-lg shadow-cyan-500/10">
               <StarIcon className="h-6 w-6" filled />
             </div>
             <div>
@@ -135,7 +135,7 @@ const Favorites = () => {
         ) : documents.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-32 text-center">
             <div className="relative mb-8">
-              <div className="absolute inset-0 animate-pulse rounded-full bg-amber-500/10 blur-2xl"></div>
+              <div className="absolute inset-0 animate-pulse rounded-full bg-cyan-500/10 blur-2xl"></div>
               <div className="relative flex h-24 w-24 items-center justify-center rounded-[2.5rem] border border-white bg-white/50 shadow-xl backdrop-blur-md">
                 <StarIcon className="h-10 w-10 text-slate-300" />
               </div>
@@ -164,7 +164,7 @@ const Favorites = () => {
                   className="group relative flex flex-col gap-6 rounded-[2rem] border border-slate-100 bg-white/40 p-6 backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:bg-white hover:shadow-2xl md:flex-row md:items-center animate-in fade-in slide-in-from-bottom-4"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
-                  <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-amber-400 to-orange-400 opacity-0 transition-opacity group-hover:opacity-100 rounded-b-[2rem]"></div>
+                  <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-cyan-500 to-blue-600 opacity-0 transition-opacity group-hover:opacity-100 rounded-b-[2rem]"></div>
                   
                   <div className="flex min-w-0 flex-1 items-center gap-6">
                     <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/20 text-[10px] font-black tracking-widest transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6 ${finalFileTypeTone}`}>
@@ -175,11 +175,11 @@ const Favorites = () => {
                         <h3 
                           role="button"
                           onClick={() => handleOpenDocument(doc.id)}
-                          className="truncate text-xl font-[1000] tracking-tight text-slate-900 transition-colors hover:text-amber-600 cursor-pointer"
+                          className="truncate text-xl font-[1000] tracking-tight text-slate-900 transition-colors hover:text-cyan-600 cursor-pointer"
                         >
                           {doc.title || 'Untitled Asset'}
                         </h3>
-                        <div className="h-1.5 w-1.5 rounded-full bg-amber-400"></div>
+                        <div className="h-1.5 w-1.5 rounded-full bg-cyan-400"></div>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-3">
                         <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
@@ -187,7 +187,7 @@ const Favorites = () => {
                         </span>
                         <span className="h-1 w-1 rounded-full bg-slate-200"></span>
                         <span className="text-[11px] font-bold text-slate-400">
-                          {formatDateLabel(doc.createdAt)}
+                          Indexed on {formatDateLabel(doc.createdAt)}
                         </span>
                       </div>
                     </div>
@@ -210,7 +210,7 @@ const Favorites = () => {
                     </button>
                     <button
                       onClick={() => handleToggleFavorite(doc.id)}
-                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-500 border border-amber-100 transition-all hover:bg-amber-100 hover:scale-110 active:scale-90"
+                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-400 border border-amber-100 transition-all hover:bg-rose-50 hover:border-rose-100 hover:text-rose-400 hover:scale-110 active:scale-90"
                       title="Remove from Index"
                     >
                       <StarIcon filled />

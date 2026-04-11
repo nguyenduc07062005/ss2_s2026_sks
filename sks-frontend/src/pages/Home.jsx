@@ -1,4 +1,11 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+
+const HERO_SLIDES = [
+  { id: 1, src: 'https://cdn.elearningindustry.com/wp-content/uploads/2024/07/Shutterstock_2480344323.jpg', alt: 'AI Education' },
+  { id: 2, src: 'https://vidyaenews.most.gov.lk/wp-content/uploads/2025/09/1727771640461-780x470-1.png', alt: 'Smart Knowledge System' },
+  { id: 3, src: 'https://cdn.elearningindustry.com/wp-content/uploads/2019/01/5-ways-ai-is-changing-the-education-industry-1-1024x574.jpg', alt: 'AI Learning' },
+];
 
 const FEATURES = [
   {
@@ -53,6 +60,23 @@ const STEPS = [
 ];
 
 const Home = () => {
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [typingIndex, setTypingIndex] = useState(0);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const slideTimer = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % HERO_SLIDES.length);
+    }, 10000); // 10s/ảnh
+    const typingTimer = setInterval(() => {
+      setTypingIndex((prev) => (prev + 1) % 4);
+    }, 6000); // 6s/chữ
+    return () => {
+      clearInterval(slideTimer);
+      clearInterval(typingTimer);
+    };
+  }, []);
+
   return (
     <div className="mx-auto max-w-[1440px]">
       {/* ═══ HERO SECTION ═══ */}
@@ -68,17 +92,39 @@ const Home = () => {
           </div>
 
           <h1 className="font-display text-5xl font-[1000] leading-[1.08] tracking-tight text-slate-900 sm:text-6xl lg:text-7xl">
-            Your Smart{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600">
-              Knowledge
-            </span>{' '}
-            Workspace
+            <span className="block mb-1 sm:mb-2">Your Smart</span>
+            <span className="inline-grid text-left">
+              {['Knowledge Base', 'Research Hub', 'AI Assistant', 'Data System'].map((phrase, i) => (
+                <span
+                  key={phrase}
+                  className={`col-start-1 row-start-1 pb-2 transition-all duration-[4000ms] ease-in-out text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 ${
+                    i === typingIndex ? 'opacity-100 translate-y-0 filter-none' : 'opacity-0 translate-y-4 blur-[6px] pointer-events-none'
+                  }`}
+                >
+                  {phrase}
+                </span>
+              ))}
+            </span>
           </h1>
 
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-500 font-medium">
             Upload documents, get AI-powered summaries, chat with your files, 
             and discover semantic connections — all in one intelligent workspace.
           </p>
+
+          {/* Feature Checkmarks */}
+          <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
+            {['Smart Summary', 'Document Chat', 'Auto Mindmap'].map((feature) => (
+              <div key={feature} className="flex items-center gap-2 text-[13px] font-bold text-slate-500">
+                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-100 text-cyan-600">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                    <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                {feature}
+              </div>
+            ))}
+          </div>
 
           <div className="mt-10 flex flex-wrap items-center gap-4">
             <Link
@@ -101,57 +147,92 @@ const Home = () => {
             </a>
           </div>
 
-          {/* Mini stats */}
-          <div className="mt-12 flex items-center gap-8">
-            {[
-              ['AI Models', 'Gemini Pro'],
-              ['Search', 'Semantic'],
-              ['Languages', 'VI · EN'],
-            ].map(([label, value]) => (
-              <div key={label} className="flex flex-col">
-                <span className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">{label}</span>
-                <span className="mt-1 text-sm font-[1000] text-slate-900">{value}</span>
-              </div>
-            ))}
-          </div>
         </div>
 
+
         {/* Right — Hero Illustration */}
-        <div className="relative flex items-center justify-center animate-scale-in [animation-delay:0.2s] [animation-fill-mode:both]">
+        <div 
+          className="relative flex items-center justify-center animate-scale-in [animation-delay:0.2s] [animation-fill-mode:both]"
+          onMouseMove={(e) => {
+            const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
+            setMousePos({
+              x: (e.clientX - left - width / 2) / (width / 2),
+              y: (e.clientY - top - height / 2) / (height / 2),
+            });
+          }}
+          onMouseLeave={() => setMousePos({ x: 0, y: 0 })}
+          style={{
+            transform: `perspective(1000px) rotateX(${-mousePos.y * 6}deg) rotateY(${mousePos.x * 6}deg)`,
+            transition: mousePos.x === 0 && mousePos.y === 0 ? 'transform 0.5s ease-out' : 'transform 0.1s ease-out'
+          }}
+        >
           {/* Background glow */}
           <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-200/40 via-blue-200/30 to-indigo-200/20 blur-3xl opacity-60" />
           
-          <div className="relative z-10 [mask-image:radial-gradient(circle,white_70%,transparent_100%)]">
-            <img
-              src="/hero-illustration.png"
-              alt="AI Knowledge Management Illustration"
-              className="w-full max-w-lg animate-float drop-shadow-[0_20px_50px_rgba(14,165,233,0.15)] lg:max-w-xl"
-            />
-          </div>
-
-          {/* Neural Node Floating Elements */}
-          <div className="absolute -top-4 right-0 z-20 animate-float-delayed">
-            <div className="relative flex h-14 w-14 items-center justify-center">
-              <div className="absolute inset-0 animate-glow-pulse rounded-full bg-cyan-400/20 blur-xl" />
-              <div className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-white/40 bg-white/20 shadow-2xl backdrop-blur-md">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" strokeWidth="2" className="h-5 w-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                </svg>
+          <div className="relative z-10 w-full max-w-xl lg:max-w-2xl mx-auto md:mr-0 md:ml-auto lg:mx-auto">
+            {/* Image Frame with Glass Bezel */}
+            <div className="relative w-full p-2.5 sm:p-4 rounded-[2.5rem] bg-white/40 border border-white/60 shadow-[0_20px_50px_-12px_rgba(8,145,178,0.25)] backdrop-blur-xl animate-float-slow">
+              <div className="relative w-full aspect-[16/10] rounded-[1.5rem] sm:rounded-[2rem] overflow-hidden shadow-inner ring-1 ring-black/5 bg-slate-100">
+                {HERO_SLIDES.map((slide, index) => (
+                  <img
+                    key={slide.id}
+                    src={slide.src}
+                    alt={slide.alt}
+                    className={`absolute inset-0 w-full h-full object-cover transition-all duration-[4000ms] ease-in-out ${
+                      index === currentSlide ? 'opacity-100 scale-100' : 'opacity-0 scale-105 pointer-events-none'
+                    }`}
+                  />
+                ))}
+                <div className="absolute inset-0 bg-gradient-to-tr from-slate-900/10 via-transparent to-white/20 pointer-events-none mix-blend-overlay" />
+                
+                {/* Carousel Indicators Overlay */}
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3 py-2 rounded-full bg-black/20 backdrop-blur-md ring-1 ring-white/20 shadow-lg">
+                  {HERO_SLIDES.map((slide, index) => (
+                    <button
+                      key={slide.id}
+                      onClick={() => setCurrentSlide(index)}
+                      className={`h-1.5 rounded-full transition-all duration-500 flex-shrink-0 ${
+                        index === currentSlide ? 'w-6 bg-white' : 'w-2 bg-white/40 hover:bg-white/70'
+                      }`}
+                      aria-label={`Go to slide ${index + 1}`}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-          <div className="absolute top-1/2 left-0 z-20 animate-float-slow">
-            <div className="relative flex h-12 w-12 items-center justify-center">
-              <div className="absolute inset-0 animate-glow-pulse rounded-full bg-blue-400/20 blur-xl" />
-              <div className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-white/40 bg-white/20 shadow-2xl backdrop-blur-md">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.5" className="h-4.5 w-4.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
-                </svg>
+
+            {/* Badges separated completely from the image */}
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-4 hidden md:flex animate-slide-up [animation-delay:0.3s]">
+              {/* UI Widget 1: Supported Formats */}
+              <div className="relative flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/60 px-4 py-2.5 shadow-sm backdrop-blur-md transition-transform hover:-translate-y-1">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 border border-cyan-100 shadow-inner">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                    <path fillRule="evenodd" d="M4.5 2A1.5 1.5 0 003 3.5v13A1.5 1.5 0 004.5 18h11a1.5 1.5 0 001.5-1.5V7.621a1.5 1.5 0 00-.44-1.06l-4.12-4.122A1.5 1.5 0 0011.378 2H4.5zm2.25 8.5a.75.75 0 000 1.5h6.5a.75.75 0 000-1.5h-6.5z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Supported Formats</span>
+                  <span className="text-[11px] font-[1000] tracking-tight text-slate-800">PDF, DOCX, TXT</span>
+                </div>
+              </div>
+
+              {/* UI Widget 2: AI Engine */}
+              <div className="relative flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/60 px-4 py-2.5 shadow-sm backdrop-blur-md transition-transform hover:-translate-y-1">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100 shadow-inner">
+                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                     <path d="M10 2.75 12.163 7.133l4.836.703-3.5 3.412.826 4.817L10 13.79l-4.325 2.275.826-4.817-3.5-3.412 4.836-.703L10 2.75Z" />
+                   </svg>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">AI Engine</span>
+                  <span className="text-[11px] font-[1000] tracking-tight text-slate-800">Powered by Gemini</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </section>
+
 
       {/* ═══ FEATURES SECTION ═══ */}
       <section id="features" className="py-16 lg:py-24">
