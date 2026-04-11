@@ -11,6 +11,14 @@ export type RagSource = {
   score: number;
 };
 
+export type AskHistoryItem = {
+  id: string;
+  question: string;
+  answer: string;
+  sources: RagSource[];
+  createdAt: string;
+};
+
 export type StructuredDocumentSummary = {
   title: string;
   overview: string;

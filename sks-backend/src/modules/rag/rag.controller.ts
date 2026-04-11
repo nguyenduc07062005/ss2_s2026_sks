@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  Delete,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -49,6 +51,42 @@ export class RagController {
   }
 
   @HttpCode(HttpStatus.OK)
+  @Get('documents/:documentId/ask/history')
+  async getDocumentAskHistory(
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Request() req: ExpressRequest,
+  ) {
+    const ownerId = this.getUserId(req);
+    const items = await this.ragService.getDocumentAskHistory(
+      documentId,
+      ownerId,
+    );
+
+    return {
+      message: 'Document ask history retrieved successfully',
+      items,
+    };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Delete('documents/:documentId/ask/history')
+  async clearDocumentAskHistory(
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Request() req: ExpressRequest,
+  ) {
+    const ownerId = this.getUserId(req);
+    const cleared = await this.ragService.clearDocumentAskHistory(
+      documentId,
+      ownerId,
+    );
+
+    return {
+      message: 'Document ask history cleared successfully',
+      cleared,
+    };
+  }
+
+  @HttpCode(HttpStatus.OK)
   @Post('documents/:documentId/summary')
   async getDocumentSummary(
     @Param('documentId', ParseUUIDPipe) documentId: string,
@@ -56,12 +94,12 @@ export class RagController {
     @Request() req: ExpressRequest,
   ) {
     const ownerId = this.getUserId(req);
-      const result = await this.ragSummaryService.generateSummary(
-        documentId,
-        ownerId,
-        body.language ?? 'en',
-        body.forceRefresh ?? false,
-      );
+    const result = await this.ragSummaryService.generateSummary(
+      documentId,
+      ownerId,
+      body.language ?? 'en',
+      body.forceRefresh ?? false,
+    );
 
     return {
       message: 'Document summary generated successfully',
@@ -81,6 +119,7 @@ export class RagController {
       documentId,
       ownerId,
       body?.language ?? 'en',
+      body?.forceRefresh ?? false,
     );
 
     return {

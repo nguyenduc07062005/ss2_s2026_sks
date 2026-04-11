@@ -119,6 +119,16 @@ const askDocument = async (documentId, question) => {
   return response.data;
 };
 
+const getDocumentAskHistory = async (documentId) => {
+  const response = await apiClient.get(`/rag/documents/${documentId}/ask/history`);
+  return response.data;
+};
+
+const clearDocumentAskHistory = async (documentId) => {
+  const response = await apiClient.delete(`/rag/documents/${documentId}/ask/history`);
+  return response.data;
+};
+
 const getDocumentSummary = async (
   documentId,
   language = 'en',
@@ -131,16 +141,25 @@ const getDocumentSummary = async (
   return response.data;
 };
 
-const getDocumentMindMap = async (documentId, language = 'en') => {
+const getDocumentMindMap = async (
+  documentId,
+  language = 'en',
+  options = {},
+) => {
   try {
-    const response = await apiClient.post(`/rag/documents/${documentId}/mindmap`, { language });
+    const response = await apiClient.post(`/rag/documents/${documentId}/mindmap`, {
+      language,
+      forceRefresh: Boolean(options.forceRefresh),
+    });
     return response.data;
   } catch (error) {
     if (error.response?.status !== 404) {
       throw error;
     }
-
-    const summary = await getDocumentSummary(documentId, language);
+  
+    const summary = await getDocumentSummary(documentId, language, {
+      forceRefresh: options.forceRefresh,
+    });
 
     return {
       message: 'Document mind map generated successfully',
@@ -161,6 +180,8 @@ const getDocumentDiagram = async (documentId) => {
 
 export {
   askDocument,
+  clearDocumentAskHistory,
+  getDocumentAskHistory,
   getDocumentMindMap,
   getDocumentDiagram,
   getDocumentSummary,

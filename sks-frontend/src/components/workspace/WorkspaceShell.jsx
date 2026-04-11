@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { getProfile } from '../../service/authAPI.js';
 import { clearToken } from '../../utils/auth.js';
-import { useDocViewer } from '../../context/DocViewerContext.jsx';
 
 const NAV_ITEMS = [
   { to: '/app/home', label: 'Home' },

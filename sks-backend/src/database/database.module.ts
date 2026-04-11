@@ -6,11 +6,13 @@ import { Document } from './entities/document.entity';
 import { Chunk } from './entities/chunks.entity';
 import { UserDocument } from './entities/user-document.entity';
 import { Folder } from './entities/folder.entity';
+import { DocumentAskHistory } from './entities/document-ask-history.entity';
 import { UserRepository } from './repositories/user.repository';
 import { DocumentRepository } from './repositories/document.repository';
 import { ChunkRepository } from './repositories/chunks.repository';
 import { UserDocumentRepository } from './repositories/user-document.repository';
 import { FolderRepository } from './repositories/folder.repository';
+import { DocumentAskHistoryRepository } from './repositories/document-ask-history.repository';
 
 @Global()
 @Module({
@@ -26,13 +28,27 @@ import { FolderRepository } from './repositories/folder.repository';
         username: config.get<string>('DATABASE_USERNAME') ?? 'postgres',
         password: config.get<string>('DATABASE_PASSWORD') ?? 'postgres',
         database: config.get<string>('DATABASE_NAME') ?? 'sks',
-        entities: [User, Document, Chunk, UserDocument, Folder],
+        entities: [
+          User,
+          Document,
+          Chunk,
+          UserDocument,
+          Folder,
+          DocumentAskHistory,
+        ],
         synchronize:
           (config.get<string>('DATABASE_SYNC') ?? 'false') === 'true',
         logging: (config.get<string>('DATABASE_LOGGING') ?? 'false') === 'true',
       }),
     }),
-    TypeOrmModule.forFeature([User, Document, Chunk, UserDocument, Folder]),
+    TypeOrmModule.forFeature([
+      User,
+      Document,
+      Chunk,
+      UserDocument,
+      Folder,
+      DocumentAskHistory,
+    ]),
   ],
   providers: [
     UserRepository,
@@ -40,6 +56,7 @@ import { FolderRepository } from './repositories/folder.repository';
     ChunkRepository,
     UserDocumentRepository,
     FolderRepository,
+    DocumentAskHistoryRepository,
   ],
   exports: [
     TypeOrmModule,
@@ -48,6 +65,7 @@ import { FolderRepository } from './repositories/folder.repository';
     ChunkRepository,
     UserDocumentRepository,
     FolderRepository,
+    DocumentAskHistoryRepository,
   ],
 })
 export class DatabaseModule {}

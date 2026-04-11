@@ -16,6 +16,8 @@ import {
 import { rememberRecentDocument } from '../utils/recentDocuments.js';
 import {
   askDocument,
+  clearDocumentAskHistory,
+  getDocumentAskHistory,
   getDocumentMindMap,
   getDocumentSummary,
 } from '../service/ragAPI.js';
@@ -71,15 +73,6 @@ const AI_TABS = [
   { id: 'ask', label: 'Ask AI', icon: '🧠' },
   { id: 'related', label: 'Related', icon: '🔗' },
 ];
-
-const MIND_MAP_KIND_LABELS = {
-  root: 'Core theme',
-  overview: 'Overview',
-  cluster: 'Knowledge cluster',
-  insight: 'Insight',
-  detail: 'Supporting detail',
-  takeaway: 'Takeaway',
-};
 
 const findMindMapNodeById = (node, targetId) => {
   if (!node || !targetId) {
@@ -201,10 +194,10 @@ const RelatedCard = ({ document, onOpen }) => {
 };
 
 /* ─── Main Component ─── */
-const DocumentViewer = () => {
+  const DocumentViewer = () => {
   const navigate = useNavigate();
   const { documentId } = useParams();
-  const { setDocInfo, setDocActions, clearDocViewer } = useDocViewer();
+  const { clearDocViewer } = useDocViewer();
 
   /* Core state */
   const [documentData, setDocumentData] = useState(null);
@@ -224,14 +217,27 @@ const DocumentViewer = () => {
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [isSummaryRefreshConfirmOpen, setIsSummaryRefreshConfirmOpen] = useState(false);
   const [isMindMapModalOpen, setIsMindMapModalOpen] = useState(false);
+  const [isMindMapRefreshConfirmOpen, setIsMindMapRefreshConfirmOpen] = useState(false);
   const [diagramState, setDiagramState] = useState({ loading: false, error: '', data: null });
   const [selectedMindMapNodeId, setSelectedMindMapNodeId] = useState(null);
   const [mindMapViewMode, setMindMapViewMode] = useState('explore');
   const [expandedMindMapNodeIds, setExpandedMindMapNodeIds] = useState([]);
   const [askQuestion, setAskQuestion] = useState('');
-  const [askState, setAskState] = useState({ loading: false, error: '', answer: '', sources: [] });
+  const [askHistoryState, setAskHistoryState] = useState({
+    loading: false,
+    error: '',
+    items: [],
+    loaded: false,
+    clearing: false,
+  });
+  const [askState, setAskState] = useState({
+    loading: false,
+    error: '',
+    pendingQuestion: '',
+  });
 
   const chatInputRef = useRef(null);
+  const askThreadRef = useRef(null);
   const isResizing = useRef(false);
   const containerRef = useRef(null);
 
@@ -316,12 +322,20 @@ const DocumentViewer = () => {
     setIsSummaryModalOpen(false);
     setIsSummaryRefreshConfirmOpen(false);
     setIsMindMapModalOpen(false);
+    setIsMindMapRefreshConfirmOpen(false);
     setDiagramState({ loading: false, error: '', data: null });
     setSelectedMindMapNodeId(null);
     setMindMapViewMode('explore');
     setExpandedMindMapNodeIds([]);
     setAskQuestion('');
-    setAskState({ loading: false, error: '', answer: '', sources: [] });
+    setAskHistoryState({
+      loading: false,
+      error: '',
+      items: [],
+      loaded: false,
+      clearing: false,
+    });
+    setAskState({ loading: false, error: '', pendingQuestion: '' });
   }, [documentId]);
 
   /* ─── AI Logic ─── */
@@ -345,19 +359,23 @@ const DocumentViewer = () => {
     }
   }, [documentId, selectedLanguage, summaryState.loading]);
 
-  const loadDiagram = useCallback(async (language = selectedLanguage) => {
+  const loadDiagram = useCallback(async (language = selectedLanguage, options = {}) => {
     if (!documentId || diagramState.loading) return;
     try {
-      setSelectedLanguage(language);
+      const targetLanguage = language || selectedLanguage;
+      const forceRefresh = Boolean(options.forceRefresh);
+      setSelectedLanguage(targetLanguage);
       setDiagramState(s => ({ ...s, loading: true, error: '' }));
-      const result = await getDocumentMindMap(documentId, language);
+      const result = await getDocumentMindMap(documentId, targetLanguage, {
+        forceRefresh,
+      });
       setDiagramState({
         loading: false,
         error: '',
         data: {
           mindMap: result.mindMap || null,
           summary: result.summary || '',
-          language: result.language || language,
+          language: result.language || targetLanguage,
           generatedAt: result.generatedAt || '',
           cached: Boolean(result.cached),
         },
@@ -372,6 +390,60 @@ const DocumentViewer = () => {
       setExpandedMindMapNodeIds([]);
     }
   }, [documentId, diagramState.loading, selectedLanguage]);
+
+  const loadAskHistory = useCallback(async () => {
+    if (!documentId || askHistoryState.loading) return;
+
+    try {
+      setAskHistoryState((current) => ({
+        ...current,
+        loading: true,
+        error: '',
+      }));
+      const result = await getDocumentAskHistory(documentId);
+      setAskHistoryState({
+        loading: false,
+        error: '',
+        items: result.items || [],
+        loaded: true,
+        clearing: false,
+      });
+    } catch (err) {
+      setAskHistoryState((current) => ({
+        ...current,
+        loading: false,
+        error: err.response?.data?.message || 'Could not load question history.',
+        loaded: true,
+      }));
+    }
+  }, [documentId, askHistoryState.loading]);
+
+  const handleClearAskHistory = useCallback(async () => {
+    if (!documentId || askHistoryState.clearing) return;
+
+    try {
+      setAskHistoryState((current) => ({
+        ...current,
+        clearing: true,
+        error: '',
+      }));
+      await clearDocumentAskHistory(documentId);
+      setAskHistoryState({
+        loading: false,
+        error: '',
+        items: [],
+        loaded: true,
+        clearing: false,
+      });
+      setAskState({ loading: false, error: '', pendingQuestion: '' });
+    } catch (err) {
+      setAskHistoryState((current) => ({
+        ...current,
+        clearing: false,
+        error: err.response?.data?.message || 'Could not clear question history.',
+      }));
+    }
+  }, [documentId, askHistoryState.clearing]);
 
   /* ─── Actions ─── */
   const handleToggleFavorite = async (id) => {
@@ -395,14 +467,53 @@ const DocumentViewer = () => {
     return () => clearDocViewer();
   }, [clearDocViewer]);
 
+  useEffect(() => {
+    if (activeTab !== 'ask' || askHistoryState.loaded || askHistoryState.loading) {
+      return;
+    }
+
+    void loadAskHistory();
+  }, [
+    activeTab,
+    askHistoryState.loaded,
+    askHistoryState.loading,
+    loadAskHistory,
+  ]);
+
+  useEffect(() => {
+    if (!askThreadRef.current) {
+      return;
+    }
+
+    askThreadRef.current.scrollTop = askThreadRef.current.scrollHeight;
+  }, [askHistoryState.items.length, askState.loading]);
+
   const handleAsk = async () => {
-    if (!documentId || !askQuestion.trim() || askState.loading) return;
+    const trimmedQuestion = askQuestion.trim();
+
+    if (!documentId || !trimmedQuestion || askState.loading) return;
+
     try {
-      setAskState(s => ({ ...s, loading: true, error: '' }));
-      const result = await askDocument(documentId, askQuestion.trim());
-      setAskState({ loading: false, error: '', answer: result.answer || '', sources: result.sources || [] });
-    } catch {
-      setAskState(s => ({ ...s, loading: false, error: 'AI consultation failed.' }));
+      setAskState({
+        loading: true,
+        error: '',
+        pendingQuestion: trimmedQuestion,
+      });
+      const result = await askDocument(documentId, trimmedQuestion);
+      setAskHistoryState((current) => ({
+        ...current,
+        items: [...current.items, result.historyItem],
+        loaded: true,
+        error: '',
+      }));
+      setAskQuestion('');
+      setAskState({ loading: false, error: '', pendingQuestion: '' });
+    } catch (err) {
+      setAskState({
+        loading: false,
+        error: err.response?.data?.message || 'AI consultation failed.',
+        pendingQuestion: '',
+      });
     }
   };
 
@@ -414,7 +525,7 @@ const DocumentViewer = () => {
     () =>
       findMindMapNodeById(
         diagramState.data?.mindMap,
-        selectedMindMapNodeId || diagramState.data?.mindMap?.id || null,
+        selectedMindMapNodeId,
       ),
     [diagramState.data?.mindMap, selectedMindMapNodeId],
   );
@@ -428,6 +539,10 @@ const DocumentViewer = () => {
 
   const handleMindMapNodeSelect = useCallback((nodeId) => {
     setSelectedMindMapNodeId(nodeId);
+  }, []);
+
+  const handleMindMapNoteClose = useCallback(() => {
+    setSelectedMindMapNodeId(null);
   }, []);
 
   const handleMindMapNodeToggle = useCallback((nodeId) => {
@@ -646,7 +761,7 @@ const DocumentViewer = () => {
     );
   };
 
-  const renderMindMapNodeDetail = (mode = 'sidebar') => {
+  const renderMindMapNodeDetail = (mode = 'canvas') => {
     if (!selectedMindMapNode) {
       return null;
     }
@@ -657,75 +772,109 @@ const DocumentViewer = () => {
     const summaryText = selectedMindMapNode.summary
       || (childCount > 0
         ? (isVietnamese
-          ? 'Nhanh nay gom cac y tiep theo cua tai lieu.'
+          ? 'Phan nay gom cac y lien quan de ban tiep tuc theo doi trong tai lieu.'
           : 'This branch groups the next ideas in the document.')
-        : (isVietnamese
-          ? 'Node nay la mot ghi chu cuoi cua nhanh hien tai.'
-          : 'This node captures a final idea in the current branch.'));
+        : '');
 
-    const containerClass = mode === 'floating'
-      ? 'pointer-events-auto w-full max-w-[340px] rounded-[24px] border border-white/80 bg-white/92 p-5 shadow-[0_30px_80px_-42px_rgba(15,23,42,0.55)] backdrop-blur-xl'
-      : 'rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_24px_70px_-46px_rgba(15,23,42,0.28)]';
-    const childPreviewNodes = selectedMindMapNode.children?.slice(0, 6) || [];
-    const helperText = selectedMindMapNode.id === rootMindMapId
+    const isFloating = mode === 'floating';
+    const isCanvasOverlay = mode === 'canvas';
+    const isCompact = mode === 'compact';
+    const containerClass = isFloating
+      ? 'pointer-events-auto flex h-full w-[400px] max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-[30px] border border-slate-200/80 bg-white/96 shadow-[0_36px_90px_-44px_rgba(15,23,42,0.42)] backdrop-blur-xl'
+      : isCanvasOverlay
+        ? 'pointer-events-auto flex max-h-[min(62vh,540px)] w-full max-w-[440px] flex-col overflow-hidden rounded-[26px] border border-slate-200/80 bg-white/96 shadow-[0_28px_80px_-40px_rgba(15,23,42,0.34)] backdrop-blur-xl'
+        : 'pointer-events-auto flex max-h-[320px] w-[320px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[22px] border border-slate-200/80 bg-white/96 shadow-[0_24px_60px_-36px_rgba(15,23,42,0.34)] backdrop-blur-xl';
+    const childPreviewLimit = isCompact ? 3 : 6;
+    const childPreviewNodes = selectedMindMapNode.children?.slice(0, childPreviewLimit) || [];
+    const displaySummaryText = isCompact && summaryText.length > 220
+      ? `${summaryText.slice(0, 220).trimEnd()}...`
+      : summaryText;
+    const hiddenBranchCount = Math.max(childCount - childPreviewNodes.length, 0);
+    const branchCountLabel = childCount > 0
       ? (isVietnamese
-        ? 'Chon mot nhanh ben phai de hoc sau hon.'
-        : 'Select one branch to study the document in more depth.')
-      : childCount > 0
-        ? (mindMapViewMode === 'all'
-          ? (isVietnamese
-            ? `${childCount} node con dang hien.`
-            : `${childCount} child ${childCount === 1 ? 'node is' : 'nodes are'} visible.`)
-          : (isVietnamese
-            ? 'Nhan vao node hoac icon mat de mo nhanh tiep theo.'
-            : 'Tap the node or eye icon to open the next branch.'))
-        : (isVietnamese
-          ? 'Node nay khong con nhanh con.'
-          : 'This node does not have any child branches.');
+        ? `${childCount} nhanh`
+        : `${childCount} ${childCount === 1 ? 'branch' : 'branches'}`)
+      : null;
+    const branchHint = childCount > 0
+      ? (isVietnamese
+        ? 'Chon mot nhanh ben duoi de xem tiep.'
+        : 'Choose a branch below to continue.')
+      : null;
 
     return (
       <div className={containerClass}>
-        <div className="flex items-start justify-between gap-3">
+        <div className={`flex items-start justify-between border-b border-slate-100 ${isCompact ? 'gap-3 px-4 py-3' : 'gap-4 px-5 py-4'}`}>
           <div className="min-w-0">
-            <p className="text-[9px] font-black uppercase tracking-[0.24em] text-slate-400">
-              {isVietnamese ? 'Study note' : 'Study Note'}
+            <p className={`font-black uppercase text-slate-400 ${isCompact ? 'text-[8px] tracking-[0.2em]' : 'text-[9px] tracking-[0.24em]'}`}>
+              Study Note
             </p>
-            <h4 className="mt-2 text-[17px] font-black leading-snug tracking-tight text-slate-950">
+            <h4 className={`font-black leading-snug tracking-tight text-slate-950 ${isCompact ? 'mt-1.5 text-[15px]' : 'mt-2 text-[18px]'}`}>
               {selectedMindMapNode.label}
             </h4>
           </div>
-          <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-600">
-            {MIND_MAP_KIND_LABELS[selectedMindMapNode.kind] || 'Node'}
-          </span>
+          <button
+            type="button"
+            onClick={handleMindMapNoteClose}
+            className={`flex shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-900 ${isCompact ? 'h-8 w-8' : 'h-9 w-9'}`}
+            title="Close note"
+          >
+            <CloseIcon />
+          </button>
         </div>
 
-        <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
-          {summaryText}
-        </p>
+        <div className={`flex-1 overflow-y-auto scrollbar-none ${isCompact ? 'space-y-4 px-4 py-3' : 'space-y-5 px-5 py-4'}`}>
+          {displaySummaryText ? (
+            <section className={isCompact ? 'space-y-1.5' : 'space-y-2'}>
+              <p className={`font-black uppercase tracking-[0.2em] text-slate-400 ${isCompact ? 'text-[8px]' : 'text-[9px]'}`}>
+                Overview
+              </p>
+              <div className={`border border-slate-200/80 bg-slate-50/85 ${isCompact ? 'rounded-[16px] p-3' : 'rounded-[20px] p-4'}`}>
+                <p className={`text-slate-600 ${isCompact ? 'text-[12px] leading-6' : 'text-[13px] leading-7'}`}>
+                  {displaySummaryText}
+                </p>
+              </div>
+            </section>
+          ) : null}
 
-        {childPreviewNodes.length > 0 && (
-          <div className="mt-4">
-            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">
-              {isVietnamese ? 'Next branches' : 'Next Branches'}
-            </p>
-            <div className="mt-2 space-y-1.5">
-              {childPreviewNodes.map((childNode) => (
-                <button
-                  key={childNode.id}
-                  type="button"
-                  onClick={() => handleMindMapNodeSelect(childNode.id)}
-                  className="block w-full rounded-xl bg-slate-50 px-3 py-2 text-left text-[12px] font-semibold text-slate-700 transition-all hover:bg-slate-100 hover:text-slate-950"
-                >
-                  {childNode.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <p className="mt-4 text-[11px] font-semibold leading-relaxed text-slate-500">
-          {helperText}
-        </p>
+          {childPreviewNodes.length > 0 && (
+            <section className={isCompact ? 'space-y-2.5' : 'space-y-3'}>
+              <div className="flex items-center justify-between gap-3">
+                <p className={`font-black uppercase tracking-[0.2em] text-slate-400 ${isCompact ? 'text-[8px]' : 'text-[9px]'}`}>
+                  Next Branches
+                </p>
+                {branchCountLabel ? (
+                  <span className={`rounded-full bg-slate-100 font-black uppercase tracking-[0.16em] text-slate-500 ring-1 ring-slate-200/80 ${isCompact ? 'px-2.5 py-1 text-[8px]' : 'px-3 py-1 text-[9px]'}`}>
+                    {branchCountLabel}
+                  </span>
+                ) : null}
+              </div>
+              <div className={isCompact ? 'space-y-1.5' : 'space-y-2'}>
+                {childPreviewNodes.map((childNode) => (
+                  <button
+                    key={childNode.id}
+                    type="button"
+                    onClick={() => handleMindMapNodeSelect(childNode.id)}
+                    className={`block w-full border border-slate-200 bg-white text-left font-semibold text-slate-700 transition-all hover:border-cyan-200 hover:bg-cyan-50/70 hover:text-slate-950 ${isCompact ? 'rounded-xl px-3 py-2.5 text-[12px]' : 'rounded-2xl px-3.5 py-3 text-[13px]'}`}
+                  >
+                    {childNode.label}
+                  </button>
+                ))}
+              </div>
+              {isCompact && hiddenBranchCount > 0 ? (
+                <p className="text-[10px] font-semibold text-slate-400">
+                  {isVietnamese
+                    ? `+${hiddenBranchCount} nhanh nua`
+                    : `+${hiddenBranchCount} more branches`}
+                </p>
+              ) : null}
+              {!isCompact && branchHint ? (
+                <p className="mt-3 text-[11px] font-semibold leading-relaxed text-slate-500">
+                  {branchHint}
+                </p>
+              ) : null}
+            </section>
+          )}
+        </div>
       </div>
     );
   };
@@ -784,47 +933,42 @@ const DocumentViewer = () => {
     if (!diagramState.data?.mindMap) return null;
 
     return (
-      <div className="flex flex-col h-full space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        {/* Header & Controls */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20">
-              <span className="text-lg">🗺</span>
-            </div>
-            <div className="flex flex-col">
-              <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">Mind Map</h3>
-              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Interactive View</span>
-            </div>
-          </div>
+      <div className="flex flex-col h-full gap-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        {/* Compact Single-Row Control Bar */}
+        <div className="flex items-center justify-between gap-2 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <div className="flex p-1 rounded-xl bg-slate-100 ring-1 ring-slate-200/40">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 text-white text-xs shadow-md shadow-cyan-500/20">🗺</div>
+            <span className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">Mind Map</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="flex p-0.5 rounded-lg bg-slate-100 ring-1 ring-slate-200/40">
               <button
                 type="button"
                 onClick={() => handleMindMapLanguageChange('vi')}
-                className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                className={`rounded-md px-2.5 py-1 text-[9px] font-black uppercase tracking-widest transition-all ${
                   selectedLanguage === 'vi' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'
                 }`}
               >VI</button>
               <button
                 type="button"
                 onClick={() => handleMindMapLanguageChange('en')}
-                className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                className={`rounded-md px-2.5 py-1 text-[9px] font-black uppercase tracking-widest transition-all ${
                   selectedLanguage === 'en' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'
                 }`}
               >EN</button>
             </div>
-            <div className="flex p-1 rounded-xl bg-slate-100 ring-1 ring-slate-200/40">
+            <div className="flex p-0.5 rounded-lg bg-slate-100 ring-1 ring-slate-200/40">
               <button
                 type="button"
                 onClick={() => handleMindMapViewModeChange('explore')}
-                className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                className={`rounded-md px-2.5 py-1 text-[9px] font-black uppercase tracking-widest transition-all ${
                   !isShowingAllNodes ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'
                 }`}
               >Explore</button>
               <button
                 type="button"
                 onClick={() => handleMindMapViewModeChange('all')}
-                className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                className={`rounded-md px-2.5 py-1 text-[9px] font-black uppercase tracking-widest transition-all ${
                   isShowingAllNodes ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-700'
                 }`}
               >All</button>
@@ -832,7 +976,7 @@ const DocumentViewer = () => {
             <button
               type="button"
               onClick={() => setIsMindMapModalOpen(true)}
-              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-cyan-500 hover:text-white transition-all ring-1 ring-slate-200/40"
+              className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-cyan-500 hover:text-white transition-all ring-1 ring-slate-200/40"
               title="Full Screen"
             >
               <ExpandIcon />
@@ -840,10 +984,8 @@ const DocumentViewer = () => {
           </div>
         </div>
 
-        <div className="h-1.5 w-12 bg-cyan-500 rounded-full" />
-
-        {/* Canvas */}
-        <div className="relative rounded-[2rem] bg-slate-50/60 border border-slate-200/60 overflow-hidden min-h-[380px] shadow-inner">
+        {/* Canvas — chiếm toàn bộ không gian còn lại */}
+        <div className="relative flex-1 rounded-[1.5rem] bg-slate-50/60 border border-slate-200/60 overflow-hidden shadow-inner min-h-0">
           <MindMapCanvas
             mindMap={diagramState.data.mindMap}
             selectedNodeId={selectedMindMapNode?.id}
@@ -852,84 +994,314 @@ const DocumentViewer = () => {
             onNodeSelect={handleMindMapNodeSelect}
             onNodeToggle={handleMindMapNodeToggle}
             language={diagramState.data.language || selectedLanguage}
-            height={380}
+            height="100%"
             compact
           />
-        </div>
 
-        {/* Node Detail Card */}
-        {renderMindMapNodeDetail('sidebar')}
+          {/* Node Detail — floating overlay bên trong canvas */}
+          {selectedMindMapNode && (
+            <div className="pointer-events-none absolute bottom-3 right-3">
+              {renderMindMapNodeDetail('compact')}
+            </div>
+          )}
+        </div>
       </div>
     );
   };
 
-  const renderAsk = () => (
-    <div className="flex flex-col h-full gap-8">
-      <div className="flex-1 space-y-10 min-h-0 overflow-y-auto pr-2 scrollbar-none">
-        {askState.answer && (
-          <div className="space-y-8 animate-soft-reveal">
-            <div className="flex justify-end">
-              <div className="max-w-[85%] rounded-[2rem] rounded-tr-none bg-gradient-to-br from-slate-800 to-slate-900 px-6 py-4 text-[13px] font-bold leading-relaxed text-slate-100 shadow-xl border border-white/10">
+  const renderAskLegacy = () => {
+    const _suggestedQuestions = [
+      'Tóm tắt nội dung chính của tài liệu này?',
+      'Các khái niệm quan trọng nhất là gì?',
+      'Giải thích phần khó hiểu nhất?',
+    ];
+
+    return (
+      <div className="flex flex-col h-full gap-0">
+        {/* Chat Messages */}
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none px-1 py-4 space-y-6">
+
+          {/* Empty State */}
+          {!askState.answer && !askState.loading && (
+            <div className="flex flex-col items-center justify-center h-full text-center animate-in fade-in duration-500">
+              <div className="relative mb-5">
+                <div className="absolute -inset-4 rounded-full bg-cyan-100/50 animate-pulse" />
+                <div className="relative flex h-16 w-16 items-center justify-center rounded-[20px] bg-gradient-to-br from-cyan-500 to-blue-600 text-white text-2xl shadow-xl shadow-cyan-500/25">🧠</div>
+              </div>
+              <h3 className="text-[13px] font-black text-slate-900 uppercase tracking-[0.2em] mb-1.5">Ask AI</h3>
+              <p className="text-[11px] text-slate-400 font-medium">Ask your questions below to get started</p>
+            </div>
+          )}
+
+          {/* Loading skeleton */}
+          {askState.loading && !askState.answer && (
+            <div className="flex justify-end animate-in fade-in duration-300">
+              <div className="max-w-[85%] rounded-[1.25rem] rounded-tr-sm bg-slate-900 px-4 py-3 text-[13px] font-medium text-slate-100 shadow-lg">
                 {askQuestion}
               </div>
             </div>
-            
-            <div className="flex justify-start">
-              <div className="max-w-full space-y-4">
-                <div className="flex items-center gap-3 mb-1">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-cyan-500 text-[8px] font-black text-white shadow-lg shadow-cyan-500/20">AI</div>
-                  <span className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-600">Knowledge Synthesis</span>
+          )}
+
+          {/* Q&A Message */}
+          {askState.answer && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-400">
+              {/* User Bubble */}
+              <div className="flex justify-end">
+                <div className="max-w-[86%] rounded-[1.25rem] rounded-tr-sm bg-slate-900 px-4 py-3 text-[13px] font-medium leading-relaxed text-slate-100 shadow-lg">
+                  {askQuestion}
                 </div>
-                <div className="pl-4 border-l-2 border-slate-100">
-                  <p className="whitespace-pre-wrap text-[15px] leading-[1.8] text-slate-700 font-medium tracking-tight">
-                    {askState.answer}
-                  </p>
+              </div>
+
+              {/* AI Bubble */}
+              <div className="flex justify-start gap-3">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20 mt-0.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+                    <path d="M15.98 1.804a1 1 0 0 0-1.96 0l-.24 1.192a1 1 0 0 1-.784.785l-1.192.238a1 1 0 0 0 0 1.962l1.192.238a1 1 0 0 1 .785.785l.238 1.192a1 1 0 0 0 1.962 0l.238-1.192a1 1 0 0 1 .785-.785l1.192-.238a1 1 0 0 0 0-1.962l-1.192-.238a1 1 0 0 1-.785-.785l-.238-1.192ZM6.949 5.684a1 1 0 0 0-1.898 0l-.683 2.051a1 1 0 0 1-.633.633l-2.051.683a1 1 0 0 0 0 1.898l2.051.684a1 1 0 0 1 .633.632l.683 2.051a1 1 0 0 0 1.898 0l.683-2.051a1 1 0 0 1 .633-.633l2.051-.683a1 1 0 0 0 0-1.898l-2.051-.683a1 1 0 0 1-.633-.633L6.95 5.684Z" />
+                  </svg>
                 </div>
-                
-                {askState.sources?.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pl-4 pt-2">
-                    {askState.sources.map((s, i) => (
-                      <div key={i} className="flex items-center gap-1.5 text-[9px] font-black text-indigo-500 bg-indigo-100/30 px-3 py-1 rounded-lg uppercase tracking-wider border border-indigo-100/50">
-                        Source Fragment {i+1}
-                      </div>
-                    ))}
+                <div className="flex-1 min-w-0">
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <span className="text-[9px] font-black uppercase tracking-[0.3em] text-cyan-600">SKS Intelligence</span>
                   </div>
-                )}
+                  <div className="rounded-[1.25rem] rounded-tl-sm border border-slate-100 bg-white px-5 py-4 shadow-sm">
+                    <p className="whitespace-pre-wrap text-[14px] leading-[1.8] text-slate-700 font-medium">
+                      {askState.answer}
+                    </p>
+                  </div>
+                  {askState.sources?.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3 pl-1">
+                      {askState.sources.map((s, i) => (
+                        <div key={i} className="flex items-center gap-1.5 rounded-xl border border-cyan-100 bg-cyan-50 px-3 py-1.5">
+                          <div className="h-1.5 w-1.5 rounded-full bg-cyan-500" />
+                          <span className="text-[9px] font-black uppercase tracking-wider text-cyan-600">Nguồn {i + 1}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Typing indicator */}
+          {askState.loading && (
+            <div className="flex justify-start gap-3 animate-in fade-in duration-300">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+                  <path d="M15.98 1.804a1 1 0 0 0-1.96 0l-.24 1.192a1 1 0 0 1-.784.785l-1.192.238a1 1 0 0 0 0 1.962l1.192.238a1 1 0 0 1 .785.785l.238 1.192a1 1 0 0 0 1.962 0l.238-1.192a1 1 0 0 1 .785-.785l1.192-.238a1 1 0 0 0 0-1.962l-1.192-.238a1 1 0 0 1-.785-.785l-.238-1.192ZM6.949 5.684a1 1 0 0 0-1.898 0l-.683 2.051a1 1 0 0 1-.633.633l-2.051.683a1 1 0 0 0 0 1.898l2.051.684a1 1 0 0 1 .633.632l.683 2.051a1 1 0 0 0 1.898 0l.683-2.051a1 1 0 0 1 .633-.633l2.051-.683a1 1 0 0 0 0-1.898l-2.051-.683a1 1 0 0 1-.633-.633L6.95 5.684Z" />
+                </svg>
+              </div>
+              <div className="rounded-[1.25rem] rounded-tl-sm border border-slate-100 bg-white px-5 py-4 shadow-sm">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-slate-300 animate-bounce [animation-delay:-0.3s]" />
+                  <span className="h-2 w-2 rounded-full bg-slate-300 animate-bounce [animation-delay:-0.15s]" />
+                  <span className="h-2 w-2 rounded-full bg-slate-300 animate-bounce" />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Input Bar */}
+        <div className="shrink-0 pt-2 pb-3 px-1">
+          <div className="relative group">
+            <div className="absolute -inset-0.5 rounded-2xl bg-gradient-to-r from-cyan-500/30 to-blue-500/30 blur-sm opacity-0 group-focus-within:opacity-100 transition-all duration-500" />
+            <div className="relative flex items-end gap-0 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden group-focus-within:border-cyan-400 group-focus-within:shadow-lg group-focus-within:shadow-cyan-500/10 transition-all duration-300">
+              <textarea
+                ref={chatInputRef}
+                value={askQuestion}
+                onChange={(e) => { setAskQuestion(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; }}
+                onKeyDown={handleAskKeyDown}
+                rows={1}
+                placeholder="Ask anything about the document..."
+                className="flex-1 min-h-[48px] resize-none bg-transparent py-3.5 pl-4 pr-2 text-[13px] font-medium text-slate-900 placeholder:text-slate-400 outline-none scrollbar-none"
+                style={{ maxHeight: '120px' }}
+              />
+              <div className="flex items-end p-2">
+                <button
+                  type="button"
+                  onClick={() => void handleAsk()}
+                  disabled={askState.loading || !askQuestion.trim()}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed disabled:scale-100"
+                >
+                  {askState.loading ? (
+                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : <SendIcon />}
+                </button>
               </div>
             </div>
           </div>
-        )}
-      </div>
-
-      <div className="shrink-0 pt-4 px-1 pb-6">
-        <div className="relative group">
-          <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 rounded-[2.5rem] blur opacity-0 group-focus-within:opacity-100 transition-opacity duration-500" />
-          <textarea
-            ref={chatInputRef}
-            value={askQuestion}
-            onChange={(e) => setAskQuestion(e.target.value)}
-            onKeyDown={handleAskKeyDown}
-            rows={1}
-            placeholder="Consult the research core..."
-            className="relative w-full resize-none rounded-[2.2rem] border border-slate-200 bg-white py-5 pl-8 pr-20 text-[14px] font-bold text-slate-900 placeholder:text-slate-300 outline-none transition-all focus:border-cyan-400 focus:shadow-2xl focus:shadow-cyan-500/5"
-          />
-          <button
-            type="button"
-            onClick={() => void handleAsk()}
-            disabled={askState.loading || !askQuestion.trim()}
-            className="absolute bottom-2.5 right-2.5 flex h-12 w-12 items-center justify-center rounded-[1.25rem] bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-20"
-          >
-            {askState.loading ? (
-               <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-               </svg>
-            ) : <SendIcon />}
-          </button>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
+
+  void renderAskLegacy;
+
+  const renderAsk = () => {
+    const hasHistory = askHistoryState.items.length > 0;
+    const askTitle = 'Ask AI';
+    const emptyHint = 'Ask your questions below to get started.';
+    const inputPlaceholder = 'Ask anything...';
+
+    return (
+      <div className="flex flex-col h-full gap-0">
+        <div className="shrink-0 flex items-center justify-between px-1 pb-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-900">{askTitle}</p>
+          {hasHistory ? (
+            <button
+              type="button"
+              onClick={() => void handleClearAskHistory()}
+              disabled={askHistoryState.clearing || askState.loading}
+              title="Clear history"
+              className="flex h-7 w-7 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {askHistoryState.clearing ? (
+                <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                  <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 1 0 .23 1.482l.149-.022.841 10.518A2.75 2.75 0 0 0 7.596 19h4.807a2.75 2.75 0 0 0 2.742-2.53l.841-10.519.149.022a.75.75 0 0 0 .23-1.482A41.03 41.03 0 0 0 14 4.193V3.75A2.75 2.75 0 0 0 11.25 1h-2.5ZM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4ZM8.58 7.72a.75.75 0 0 0-1.5.06l.3 7.5a.75.75 0 1 0 1.5-.06l-.3-7.5Zm4.34.06a.75.75 0 1 0-1.5-.06l-.3 7.5a.75.75 0 1 0 1.5.06l.3-7.5Z" clipRule="evenodd" />
+                </svg>
+              )}
+            </button>
+          ) : null}
+        </div>
+
+        <div
+          ref={askThreadRef}
+          className="flex-1 min-h-0 overflow-y-auto scrollbar-none px-1 py-4 space-y-6"
+        >
+          {askHistoryState.error ? <InlineAlert tone="error">{askHistoryState.error}</InlineAlert> : null}
+
+          {askHistoryState.loading && !hasHistory ? (
+            <div className="space-y-4 animate-pulse">
+              <div className="flex justify-end">
+                <div className="h-12 w-[72%] rounded-[1.25rem] rounded-tr-sm bg-slate-200" />
+              </div>
+              <div className="flex justify-start gap-3">
+                <div className="h-7 w-7 rounded-xl bg-slate-200" />
+                <div className="h-24 w-[78%] rounded-[1.25rem] rounded-tl-sm bg-slate-100" />
+              </div>
+            </div>
+          ) : null}
+
+          {!askHistoryState.loading && !hasHistory && !askState.loading && !askHistoryState.error ? (
+            <div className="flex flex-col items-center justify-center h-full text-center animate-in fade-in duration-500">
+              <div className="relative mb-5">
+                <div className="absolute -inset-4 rounded-full bg-cyan-100/50 animate-pulse" />
+                <div className="relative flex h-16 w-16 items-center justify-center rounded-[20px] bg-gradient-to-br from-cyan-500 to-blue-600 text-white text-2xl shadow-xl shadow-cyan-500/25">
+                  AI
+                </div>
+              </div>
+              <h3 className="text-[13px] font-black text-slate-900 uppercase tracking-[0.2em] mb-1.5">{askTitle}</h3>
+              <p className="text-[11px] text-slate-400 font-medium">{emptyHint}</p>
+            </div>
+          ) : null}
+
+          {askHistoryState.items.map((item) => (
+            <div
+              key={item.id}
+              className="space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-400"
+            >
+              <div className="flex justify-end">
+                <div className="max-w-[86%] rounded-[1.25rem] rounded-tr-sm bg-slate-900 px-4 py-3 text-[13px] font-medium leading-relaxed text-slate-100 shadow-lg">
+                  {item.question}
+                </div>
+              </div>
+
+              <div className="flex justify-start gap-3">
+                <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20">
+                  <SparklesIcon />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <span className="text-[9px] font-black uppercase tracking-[0.3em] text-cyan-600">
+                      SKS Intelligence
+                    </span>
+                  </div>
+                  <div className="rounded-[1.25rem] rounded-tl-sm border border-slate-100 bg-white px-5 py-4 shadow-sm">
+                    <p className="whitespace-pre-wrap text-[14px] leading-[1.8] font-medium text-slate-700">
+                      {item.answer}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {askState.loading && askState.pendingQuestion ? (
+            <div className="space-y-4 animate-in fade-in duration-300">
+              <div className="flex justify-end">
+                <div className="max-w-[86%] rounded-[1.25rem] rounded-tr-sm bg-slate-900 px-4 py-3 text-[13px] font-medium leading-relaxed text-slate-100 shadow-lg">
+                  {askState.pendingQuestion}
+                </div>
+              </div>
+              <div className="flex justify-start gap-3">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20">
+                  <SparklesIcon />
+                </div>
+                <div className="rounded-[1.25rem] rounded-tl-sm border border-slate-100 bg-white px-5 py-4 shadow-sm">
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-slate-300 animate-bounce [animation-delay:-0.3s]" />
+                    <span className="h-2 w-2 rounded-full bg-slate-300 animate-bounce [animation-delay:-0.15s]" />
+                    <span className="h-2 w-2 rounded-full bg-slate-300 animate-bounce" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {askState.error ? <InlineAlert tone="error">{askState.error}</InlineAlert> : null}
+        </div>
+
+        <div className="shrink-0 pt-2 pb-3 px-1">
+          <div className="relative group">
+            <div className="absolute -inset-0.5 rounded-2xl bg-gradient-to-r from-cyan-500/30 to-blue-500/30 blur-sm opacity-0 transition-all duration-500 group-focus-within:opacity-100" />
+            <div className="relative flex items-end gap-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 group-focus-within:border-cyan-400 group-focus-within:shadow-lg group-focus-within:shadow-cyan-500/10">
+              <textarea
+                ref={chatInputRef}
+                value={askQuestion}
+                onChange={(e) => {
+                  setAskQuestion(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                }}
+                onKeyDown={handleAskKeyDown}
+                rows={1}
+                placeholder={inputPlaceholder}
+                className="flex-1 min-h-[48px] resize-none bg-transparent py-3.5 pl-4 pr-2 text-[13px] font-medium text-slate-900 outline-none placeholder:text-slate-400 scrollbar-none"
+                style={{ maxHeight: '120px' }}
+              />
+              <div className="flex items-end p-2">
+                <button
+                  type="button"
+                  onClick={() => void handleAsk()}
+                  disabled={askState.loading || askHistoryState.clearing || !askQuestion.trim()}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20 transition-all hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-30 disabled:scale-100"
+                >
+                  {askState.loading ? (
+                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <SendIcon />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
 
   const renderRelated = () => (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1010,7 +1382,7 @@ const DocumentViewer = () => {
 
               <button
                 type="button"
-                onClick={() => void loadDiagram(selectedLanguage)}
+                onClick={() => setIsMindMapRefreshConfirmOpen(true)}
                 className="flex h-8 items-center gap-2 rounded-xl bg-slate-100 px-4 text-[9px] font-black uppercase tracking-widest text-slate-600 ring-1 ring-slate-200/40 transition-all hover:bg-white hover:text-cyan-600 hover:shadow-sm"
               >
                 <SparklesIcon />
@@ -1041,20 +1413,16 @@ const DocumentViewer = () => {
               compact={false}
             />
 
-            {/* Interaction hints */}
-            <div className="absolute bottom-6 left-6 pointer-events-none">
-              <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-sm">
-                <div className="text-[10px] font-bold text-slate-400 flex flex-col gap-1">
-                  <span className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-cyan-500" /> Click to select node</span>
-                  <span className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-blue-500" /> Use wheel to zoom</span>
+            {selectedMindMapNode && (
+              <>
+                <div className="pointer-events-none absolute inset-x-4 bottom-4 xl:hidden">
+                  {renderMindMapNodeDetail('canvas')}
                 </div>
-              </div>
-            </div>
-
-            {/* Floating Node Detail */}
-            <div className="pointer-events-none absolute inset-x-6 bottom-6 flex flex-wrap items-end justify-end gap-6">
-              {renderMindMapNodeDetail('floating')}
-            </div>
+                <div className="pointer-events-none absolute bottom-6 right-6 top-6 hidden xl:flex">
+                  {renderMindMapNodeDetail('floating')}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1127,16 +1495,28 @@ const DocumentViewer = () => {
 
             <button
               onClick={() => setSidebarOpen(v => !v)}
-              className={`group relative flex h-8 items-center gap-2.5 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${
+              title={sidebarOpen ? 'Close AI Assistant' : 'Open AI Assistant'}
+              className={`group relative flex h-8 items-center gap-2 rounded-xl px-3.5 text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${
                 sidebarOpen
-                  ? 'bg-slate-900 text-white shadow-lg ring-1 ring-slate-800'
+                  ? 'bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-500 ring-1 ring-slate-200/60'
                   : 'bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]'
               }`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`h-3.5 w-3.5 ${sidebarOpen ? 'text-cyan-400' : 'text-white'}`}>
-                <path d="M15.98 1.804a1 1 0 0 0-1.96 0l-.24 1.192a1 1 0 0 1-.784.785l-1.192.238a1 1 0 0 0 0 1.962l1.192.238a1 1 0 0 1 .785.785l.238 1.192a1 1 0 0 0 1.962 0l.238-1.192a1 1 0 0 1 .785-.785l1.192-.238a1 1 0 0 0 0-1.962l-1.192-.238a1 1 0 0 1-.785-.785l-.238-1.192ZM6.949 5.684a1 1 0 0 0-1.898 0l-.683 2.051a1 1 0 0 1-.633.633l-2.051.683a1 1 0 0 0 0 1.898l2.051.684a1 1 0 0 1 .633.632l.683 2.051a1 1 0 0 0 1.898 0l.683-2.051a1 1 0 0 1 .633-.633l2.051-.683a1 1 0 0 0 0-1.898l-2.051-.683a1 1 0 0 1-.633-.633L6.95 5.684ZM13.949 13.684a1 1 0 0 0-1.898 0l-.184.551a1 1 0 0 1-.632.633l-.551.183a1 1 0 0 0 0 1.898l.551.183a1 1 0 0 1 .633.633l.183.551a1 1 0 0 0 1.898 0l.184-.551a1 1 0 0 1 .632-.633l.551-.183a1 1 0 0 0 0-1.898l-.551-.184a1 1 0 0 1-.633-.632l-.183-.551Z" />
-              </svg>
-              <span className="hidden lg:inline">Intelligence</span>
+              {sidebarOpen ? (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 shrink-0">
+                    <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                  </svg>
+                  <span className="hidden lg:inline">Close AI</span>
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 shrink-0">
+                    <path d="M15.98 1.804a1 1 0 0 0-1.96 0l-.24 1.192a1 1 0 0 1-.784.785l-1.192.238a1 1 0 0 0 0 1.962l1.192.238a1 1 0 0 1 .785.785l.238 1.192a1 1 0 0 0 1.962 0l.238-1.192a1 1 0 0 1 .785-.785l1.192-.238a1 1 0 0 0 0-1.962l-1.192-.238a1 1 0 0 1-.785-.785l-.238-1.192ZM6.949 5.684a1 1 0 0 0-1.898 0l-.683 2.051a1 1 0 0 1-.633.633l-2.051.683a1 1 0 0 0 0 1.898l2.051.684a1 1 0 0 1 .633.632l.683 2.051a1 1 0 0 0 1.898 0l.683-2.051a1 1 0 0 1 .633-.633l2.051-.683a1 1 0 0 0 0-1.898l-2.051-.683a1 1 0 0 1-.633-.633L6.95 5.684ZM13.949 13.684a1 1 0 0 0-1.898 0l-.184.551a1 1 0 0 1-.632.633l-.551.183a1 1 0 0 0 0 1.898l.551.183a1 1 0 0 1 .633.633l.183.551a1 1 0 0 0 1.898 0l.184-.551a1 1 0 0 1 .632-.633l.551-.183a1 1 0 0 0 0-1.898l-.551-.184a1 1 0 0 1-.633-.632l-.183-.551Z" />
+                  </svg>
+                  <span className="hidden lg:inline">Intelligence</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -1265,6 +1645,56 @@ const DocumentViewer = () => {
     );
   };
 
+  const renderMindMapRefreshConfirmModal = () => {
+    if (!diagramState.data?.mindMap) return null;
+
+    const activeDiagramLanguage = diagramState.data.language || selectedLanguage;
+    const languageLabel = activeDiagramLanguage === 'vi' ? 'VI' : 'EN';
+
+    return (
+      <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/50 p-5 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="w-full max-w-md rounded-[2rem] border border-white/15 bg-white p-8 shadow-2xl animate-in zoom-in-95 duration-300">
+          <div className="flex items-start justify-between gap-6">
+            <div className="space-y-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.35em] text-slate-400">Confirm Refresh</p>
+              <h3 className="text-2xl font-[1000] tracking-tight text-slate-900">Create a new {languageLabel} mind map?</h3>
+              <p className="text-[14px] leading-relaxed text-slate-600">
+                This will create a fresh mind map and replace the current version for the selected language.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsMindMapRefreshConfirmOpen(false)}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-500"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+
+          <div className="mt-8 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setIsMindMapRefreshConfirmOpen(false)}
+              className="rounded-2xl border border-slate-200 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-900"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsMindMapRefreshConfirmOpen(false);
+                void loadDiagram(activeDiagramLanguage, { forceRefresh: true });
+              }}
+              className="rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 px-6 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-cyan-500/20 transition-all hover:scale-[1.02] active:scale-95"
+            >
+              Confirm New Mind Map
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   /* ─── RENDER ─── */
   const filePresentation = useMemo(() => getFilePresentation(documentData || { title: '', fileRef: '' }), [documentData]);
   const canPreview = useMemo(() => {
@@ -1367,7 +1797,14 @@ const DocumentViewer = () => {
             </div>
 
             {/* AI Content Area */}
-            <div className="flex-1 overflow-y-auto px-6 py-5 pb-24 animate-soft-reveal scrollbar-none" key={activeTab}>
+            <div
+              className={`flex-1 min-h-0 animate-soft-reveal scrollbar-none ${
+                activeTab === 'diagram' || activeTab === 'ask'
+                  ? 'flex flex-col overflow-hidden px-6 pt-4 pb-0'
+                  : 'overflow-y-auto px-6 py-5 pb-24'
+              }`}
+              key={activeTab}
+            >
                {activeTab === 'summary' && renderSummary()}
                {activeTab === 'diagram' && renderDiagram()}
                {activeTab === 'ask' && renderAsk()}
@@ -1381,6 +1818,7 @@ const DocumentViewer = () => {
       {isMindMapModalOpen && renderMindMapModal()}
       {isSummaryModalOpen && renderSummaryModal()}
       {isSummaryRefreshConfirmOpen && renderSummaryRefreshConfirmModal()}
+      {isMindMapRefreshConfirmOpen && renderMindMapRefreshConfirmModal()}
     </div>
   );
 };

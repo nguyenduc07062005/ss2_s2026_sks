@@ -140,12 +140,7 @@ describe('RagSummaryService', () => {
         conclusion: 'Fresh conclusion.',
       });
 
-    const result = await service.generateSummary(
-      'doc-1',
-      'user-1',
-      'en',
-      true,
-    );
+    const result = await service.generateSummary('doc-1', 'user-1', 'en', true);
 
     expect(result.cached).toBe(false);
     expect(result.title).toBe('Fresh summary');

@@ -3,9 +3,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { LlmModule } from 'src/common/llm/llm.module';
 import { DatabaseModule } from 'src/database/database.module';
 import { Document } from 'src/database/entities/document.entity';
+import { DocumentAskHistory } from 'src/database/entities/document-ask-history.entity';
 import { Folder } from 'src/database/entities/folder.entity';
 import { UserDocument } from 'src/database/entities/user-document.entity';
 import { ChunkRepository } from 'src/database/repositories/chunks.repository';
+import { DocumentAskHistoryRepository } from 'src/database/repositories/document-ask-history.repository';
 import { DocumentRepository } from 'src/database/repositories/document.repository';
 import { FolderRepository } from 'src/database/repositories/folder.repository';
 import { UserDocumentRepository } from 'src/database/repositories/user-document.repository';
@@ -18,7 +20,12 @@ import { RagSummaryService } from './services/rag-summary.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Document, Folder, UserDocument]),
+    TypeOrmModule.forFeature([
+      Document,
+      Folder,
+      UserDocument,
+      DocumentAskHistory,
+    ]),
     LlmModule,
     DatabaseModule,
   ],
@@ -33,6 +40,7 @@ import { RagSummaryService } from './services/rag-summary.service';
     ChunkRepository,
     FolderRepository,
     UserDocumentRepository,
+    DocumentAskHistoryRepository,
   ],
   exports: [RagService, RagSummaryService],
 })

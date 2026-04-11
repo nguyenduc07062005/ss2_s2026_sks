@@ -53,14 +53,6 @@ function MindMapNode({ data }) {
     ? 'ring-4 ring-sky-200/90 scale-[1.01]'
     : 'ring-0';
   const canToggle = Boolean(data.showToggle);
-  const isVietnamese = data.uiLanguage === 'vi';
-  const helperLabel = data.childCount > 0
-    ? (isVietnamese
-      ? `${data.childCount} nhanh lien quan`
-      : `${data.childCount} related ${data.childCount === 1 ? 'branch' : 'branches'}`)
-    : (data.hasSummary
-      ? (isVietnamese ? 'Cham de doc ghi chu' : 'Tap to read note')
-      : '');
 
   const handleToggle = (event) => {
     event.stopPropagation();
@@ -78,11 +70,6 @@ function MindMapNode({ data }) {
         <p className="text-[14px] font-semibold leading-snug tracking-tight">
           {data.label}
         </p>
-        {helperLabel && (
-          <p className="mt-2 text-[11px] font-semibold tracking-tight text-slate-500">
-            {helperLabel}
-          </p>
-        )}
       </div>
 
       {canToggle && (

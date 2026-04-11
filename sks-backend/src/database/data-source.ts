@@ -6,6 +6,7 @@ import { Document } from './entities/document.entity';
 import { Chunk } from './entities/chunks.entity';
 import { UserDocument } from './entities/user-document.entity';
 import { Folder } from './entities/folder.entity';
+import { DocumentAskHistory } from './entities/document-ask-history.entity';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -16,7 +17,7 @@ export const AppDataSource = new DataSource({
   database: process.env.DATABASE_NAME || 'sks',
   synchronize: false,
   logging: (process.env.DATABASE_LOGGING || 'false') === 'true',
-  entities: [User, Document, Chunk, UserDocument, Folder],
+  entities: [User, Document, Chunk, UserDocument, Folder, DocumentAskHistory],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   migrationsTableName: 'migrations',
 });

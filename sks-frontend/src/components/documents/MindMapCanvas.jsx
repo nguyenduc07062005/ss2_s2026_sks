@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ELK from 'elkjs/lib/elk.bundled.js';
 import {
   Background,
@@ -195,6 +195,7 @@ function MindMapFlow({
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const { fitView } = useReactFlow();
+  const wrapperRef = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -246,16 +247,41 @@ function MindMapFlow({
       return;
     }
 
-    const frameId = window.requestAnimationFrame(() => {
+    const fitCanvas = () => {
       void fitView({
         duration: 360,
         maxZoom: compact ? 1.05 : 1.25,
         minZoom: compact ? 0.55 : 0.45,
         padding: compact ? 0.14 : 0.2,
       });
-    });
+    };
 
-    return () => window.cancelAnimationFrame(frameId);
+    let frameId = 0;
+    const scheduleFitView = () => {
+      frameId = window.requestAnimationFrame(() => {
+        frameId = window.requestAnimationFrame(() => {
+          fitCanvas();
+        });
+      });
+    };
+
+    scheduleFitView();
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' && wrapperRef.current
+        ? new ResizeObserver(() => {
+            scheduleFitView();
+          })
+        : null;
+
+    if (resizeObserver && wrapperRef.current) {
+      resizeObserver.observe(wrapperRef.current);
+    }
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+    };
   }, [compact, fitView, nodes]);
 
   const minimapNodeColor = useMemo(
@@ -274,10 +300,12 @@ function MindMapFlow({
 
   return (
     <div
-      className="overflow-hidden rounded-[30px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,1)_0%,rgba(248,250,252,0.96)_100%)] shadow-[0_34px_90px_-38px_rgba(15,23,42,0.22)]"
+      ref={wrapperRef}
+      className="min-w-0 w-full flex-1 overflow-hidden rounded-[30px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,1)_0%,rgba(248,250,252,0.96)_100%)] shadow-[0_34px_90px_-38px_rgba(15,23,42,0.22)]"
       style={{ height }}
     >
       <ReactFlow
+        className="h-full w-full"
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
