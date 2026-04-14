@@ -6,7 +6,6 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { PromptTemplate } from '@langchain/core/prompts';
-import { GeminiService } from 'src/common/llm/gemini.service';
 import {
   DocumentSummaryResponse,
   StructuredDocumentSummary,
@@ -16,6 +15,7 @@ import {
 import { RagArtifactCacheService } from './rag-artifact-cache.service';
 import { RagDocumentContextService } from './rag-document-context.service';
 import { RagIndexingService } from './rag-indexing.service';
+import { RagStructuredGenerationService } from './rag-structured-generation.service';
 
 const MAX_SUMMARY_CONTEXT_CHUNKS = 18;
 const SUMMARY_ARTIFACT_VERSION = 2;
@@ -104,10 +104,10 @@ export class RagSummaryService {
   );
 
   constructor(
-    private readonly geminiService: GeminiService,
     private readonly ragIndexingService: RagIndexingService,
     private readonly ragDocumentContextService: RagDocumentContextService,
     private readonly ragArtifactCacheService: RagArtifactCacheService,
+    private readonly ragStructuredGenerationService: RagStructuredGenerationService,
   ) {}
 
   async generateSummary(
@@ -197,69 +197,24 @@ export class RagSummaryService {
     context: string;
     languageName: string;
   }): Promise<StructuredDocumentSummary> {
-    const baseModel = this.geminiService.createChatModel({
-      temperature: 0.2,
-      maxOutputTokens: 1400,
-      topP: 0.85,
-    });
-
     try {
-      const structuredSummary = this.coerceStructuredSummary(
-        await this.summaryPrompt
-          .pipe(
-            baseModel.withStructuredOutput(SUMMARY_OUTPUT_SCHEMA, {
-              method: 'jsonSchema',
-            }),
-          )
-          .invoke(input),
-      );
-
-      if (structuredSummary) {
-        return structuredSummary;
-      }
-
-      this.logger.warn(
-        'Summary generation with JSON schema returned an empty structured payload. Falling back to function calling.',
-      );
-    } catch (jsonSchemaError) {
-      this.logger.warn(
-        `Summary generation fell back to function calling: ${this.toErrorMessage(
-          jsonSchemaError,
-        )}`,
-      );
-    }
-
-    try {
-      const structuredSummary = this.coerceStructuredSummary(
-        await this.summaryPrompt
-          .pipe(
-            baseModel.withStructuredOutput(SUMMARY_OUTPUT_SCHEMA, {
-              method: 'functionCalling',
-              name: 'document_summary',
-            }),
-          )
-          .invoke(input),
-      );
-
-      if (structuredSummary) {
-        return structuredSummary;
-      }
-
-      this.logger.warn(
-        'Summary generation with function calling returned an empty structured payload. Falling back to raw Gemini JSON mode.',
-      );
-    } catch (fallbackError) {
-      this.logger.warn(
-        `Summary generation fell back to raw Gemini JSON mode: ${this.toErrorMessage(
-          fallbackError,
-        )}`,
-      );
-    }
-
-    try {
-      const prompt = await this.summaryJsonFallbackPrompt.format(input);
-      const rawResponse = await this.geminiService.generateText(prompt);
-      return this.parseRawSummaryResponse(rawResponse);
+      return await this.ragStructuredGenerationService.generate({
+        input,
+        prompt: this.summaryPrompt,
+        fallbackPrompt: this.summaryJsonFallbackPrompt,
+        outputSchema: SUMMARY_OUTPUT_SCHEMA,
+        schemaName: 'document_summary',
+        operationLabel: 'Summary generation',
+        modelOptions: {
+          temperature: 0.2,
+          maxOutputTokens: 1400,
+          topP: 0.85,
+        },
+        coerce: (value) => this.coerceStructuredSummary(value),
+        parseRawResponse: (rawResponse) =>
+          this.parseRawSummaryResponse(rawResponse),
+        logger: this.logger,
+      });
     } catch (rawFallbackError) {
       this.logger.error(
         'Summary generation failed after LangChain and raw Gemini fallback.',

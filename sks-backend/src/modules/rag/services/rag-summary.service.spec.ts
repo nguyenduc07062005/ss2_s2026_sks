@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { RagSummaryService } from './rag-summary.service';
 
 describe('RagSummaryService', () => {
@@ -25,7 +26,6 @@ describe('RagSummaryService', () => {
     };
   };
 
-  const geminiService = {};
   const ragIndexingService = {
     ensureDocumentIndexed: jest.fn<Promise<void>, [string]>(),
   };
@@ -41,6 +41,9 @@ describe('RagSummaryService', () => {
   const ragArtifactCacheService = {
     getSummary: jest.fn<unknown, [OwnedDocument, 'en' | 'vi']>(),
     saveSummary: jest.fn<Promise<void>, [OwnedDocument, unknown]>(),
+  };
+  const ragStructuredGenerationService = {
+    generate: jest.fn<Promise<unknown>, [unknown]>(),
   };
 
   let service: RagSummaryService;
@@ -58,10 +61,10 @@ describe('RagSummaryService', () => {
     ragArtifactCacheService.getSummary.mockReturnValue(null);
     ragArtifactCacheService.saveSummary.mockResolvedValue(undefined);
     service = new RagSummaryService(
-      geminiService as never,
       ragIndexingService as never,
       ragDocumentContextService as never,
       ragArtifactCacheService as never,
+      ragStructuredGenerationService as never,
     );
   });
 
@@ -148,6 +151,23 @@ describe('RagSummaryService', () => {
       ragDocumentContextService.getRepresentativeChunks,
     ).toHaveBeenCalled();
     expect(ragArtifactCacheService.saveSummary).toHaveBeenCalled();
+  });
+
+  it('rejects summary generation when the document has no indexed chunks', async () => {
+    ragDocumentContextService.ensureOwnedDocument.mockResolvedValue({
+      id: 'doc-1',
+      title: 'Debugging Notes',
+    });
+    ragArtifactCacheService.getSummary.mockReturnValue(null);
+    ragIndexingService.ensureDocumentIndexed.mockResolvedValue(undefined);
+    ragDocumentContextService.getRepresentativeChunks.mockResolvedValue([]);
+
+    await expect(
+      service.generateSummary('doc-1', 'user-1', 'en'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(ragArtifactCacheService.saveSummary).not.toHaveBeenCalled();
+    expect(ragStructuredGenerationService.generate).not.toHaveBeenCalled();
   });
 
   it('falls back to safe copy when structured summary generation returns no payload', async () => {

@@ -15,6 +15,7 @@ import type { Request as ExpressRequest } from 'express';
 import { AskRagDto } from './dtos/ask-rag.dto';
 import { GenerateSummaryDto } from './dtos/generate-summary.dto';
 import { RagService } from './rag.service';
+import { RagMindMapService } from './services/rag-mind-map.service';
 import { RagSummaryService } from './services/rag-summary.service';
 import { JwtAuthGuard } from '../authentication/jwt/jwt-auth.guard';
 
@@ -23,6 +24,7 @@ import { JwtAuthGuard } from '../authentication/jwt/jwt-auth.guard';
 export class RagController {
   constructor(
     private readonly ragService: RagService,
+    private readonly ragMindMapService: RagMindMapService,
     private readonly ragSummaryService: RagSummaryService,
   ) {}
 
@@ -115,7 +117,7 @@ export class RagController {
     @Request() req: ExpressRequest,
   ) {
     const ownerId = this.getUserId(req);
-    const result = await this.ragService.getDocumentMindMap(
+    const result = await this.ragMindMapService.getDocumentMindMap(
       documentId,
       ownerId,
       body?.language ?? 'en',

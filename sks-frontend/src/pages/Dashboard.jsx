@@ -613,6 +613,7 @@ const Dashboard = () => {
     selectFolder,
     selectedFolder,
     selectedFolderId,
+    total,
     totalPages,
   } = useDocumentsContext();
 
@@ -1288,7 +1289,7 @@ const Dashboard = () => {
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-blue-400">
                     <path fillRule="evenodd" d="M4 4a2 2 0 0 1 2-2h4.586A2 2 0 0 1 12 2.586L15.414 6A2 2 0 0 1 16 7.414V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4Zm2 6a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2H7a1 1 0 0 1-1-1Zm1 3a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2H7Z" clipRule="evenodd" />
                   </svg>
-                  <span className="text-[12px] font-black text-white">{documents.length}</span>
+                  <span className="text-[12px] font-black text-white">{total}</span>
                   <span className="text-[11px] font-medium text-slate-400">Documents</span>
                 </div>
                 {recentDocuments.length > 0 ? (

@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { getFolders, getDocumentsByFolder } from '../service/folderAPI.js';
@@ -48,8 +49,13 @@ export const DocumentsProvider = ({ children }) => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState('');
+  const documentsRequestRef = useRef(0);
 
   const rootFolder = useMemo(() => folders[0] || null, [folders]);
+  const activeFolderId = useMemo(
+    () => selectedFolderId || rootFolder?.id || null,
+    [rootFolder?.id, selectedFolderId],
+  );
 
   const selectedFolder = useMemo(() => {
     if (!selectedFolderId) {
@@ -70,9 +76,13 @@ export const DocumentsProvider = ({ children }) => {
       const nextSelectedFolder = preferredFolderId
         ? findFolderById(nextFolders, preferredFolderId)
         : null;
+      const nextSelectedFolderId =
+        nextSelectedFolder && nextSelectedFolder.id !== nextRootFolder?.id
+          ? nextSelectedFolder.id
+          : null;
 
       setFolders(nextFolders);
-      setSelectedFolderId(nextSelectedFolder?.id || nextRootFolder?.id || null);
+      setSelectedFolderId(nextSelectedFolderId);
       setError('');
     } catch (err) {
       setFolders([]);
@@ -88,6 +98,9 @@ export const DocumentsProvider = ({ children }) => {
   }, []);
 
   const loadDocuments = useCallback(async (folderId, page = 1) => {
+    const requestId = documentsRequestRef.current + 1;
+    documentsRequestRef.current = requestId;
+
     if (!folderId) {
       setDocuments([]);
       setTotal(0);
@@ -100,19 +113,30 @@ export const DocumentsProvider = ({ children }) => {
     try {
       setDocumentsLoading(true);
       const result = await getDocumentsByFolder(folderId, page, ITEMS_PER_PAGE);
+
+      if (requestId !== documentsRequestRef.current) {
+        return;
+      }
+
       setDocuments(result.documents || []);
       setCurrentPage(result.currentPage || 1);
       setTotalPages(result.totalPages || 1);
       setTotal(result.total || 0);
       setError('');
     } catch (err) {
+      if (requestId !== documentsRequestRef.current) {
+        return;
+      }
+
       setDocuments([]);
       setTotal(0);
       setCurrentPage(1);
       setTotalPages(1);
       setError(err.response?.data?.message || 'Failed to load documents.');
     } finally {
-      setDocumentsLoading(false);
+      if (requestId === documentsRequestRef.current) {
+        setDocumentsLoading(false);
+      }
     }
   }, []);
 
@@ -121,37 +145,32 @@ export const DocumentsProvider = ({ children }) => {
   }, [loadFolders]);
 
   useEffect(() => {
-    if (!selectedFolderId) {
-      setDocumentsLoading(false);
-      return;
-    }
-
-    void loadDocuments(selectedFolderId, 1);
-  }, [loadDocuments, selectedFolderId]);
+    void loadDocuments(activeFolderId, 1);
+  }, [activeFolderId, loadDocuments]);
 
   const selectFolder = useCallback((folderId) => {
     setSelectedFolderId(folderId);
   }, []);
 
   const refreshFolders = useCallback(
-    async (preferredFolderId = selectedFolderId) => {
+    async (preferredFolderId = activeFolderId) => {
       await loadFolders(preferredFolderId);
     },
-    [loadFolders, selectedFolderId],
+    [activeFolderId, loadFolders],
   );
 
   const refreshDocuments = useCallback(
     async (page = currentPage) => {
-      await loadDocuments(selectedFolderId, page);
+      await loadDocuments(activeFolderId, page);
     },
-    [currentPage, loadDocuments, selectedFolderId],
+    [activeFolderId, currentPage, loadDocuments],
   );
 
   const goToPage = useCallback(
     async (page) => {
-      await loadDocuments(selectedFolderId, page);
+      await loadDocuments(activeFolderId, page);
     },
-    [loadDocuments, selectedFolderId],
+    [activeFolderId, loadDocuments],
   );
 
   const value = useMemo(

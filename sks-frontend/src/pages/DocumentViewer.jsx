@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDocViewer } from "../context/DocViewerContext.jsx";
-import MindMapCanvas from "../components/documents/MindMapCanvas.jsx";
 import { getFilePresentation } from "../components/workspace/DocumentLibraryPanel.jsx";
 import {
   downloadDocumentFile,
@@ -20,7 +19,9 @@ import {
   getDocumentSummary,
 } from "../service/ragAPI.js";
 
-/* ─── Icons ─── */
+const MindMapCanvas = lazy(() => import("../components/documents/MindMapCanvas.jsx"));
+
+/* Icons */
 const ArrowLeftIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -48,12 +49,12 @@ const DownloadIcon = () => (
   </svg>
 );
 
-const ExternalLinkIcon = () => (
+const ExternalLinkIcon = ({ className = "h-5 w-5" }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 20 20"
     fill="currentColor"
-    className="h-5 w-5"
+    className={className}
   >
     <path
       fillRule="evenodd"
@@ -85,12 +86,12 @@ const StarIcon = ({ filled }) => (
   </svg>
 );
 
-const SparklesIcon = () => (
+const SparklesIcon = ({ className = "h-5 w-5" }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 20 20"
     fill="currentColor"
-    className="h-5 w-5"
+    className={className}
   >
     <path d="M10 1a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 1ZM5.05 3.05a.75.75 0 0 1 1.06 0l1.062 1.06a.75.75 0 1 1-1.06 1.06L5.05 4.11a.75.75 0 0 1 0-1.06ZM14.95 3.05a.75.75 0 0 1 0 1.06l-1.06 1.062a.75.75 0 0 1-1.062-1.06l1.06-1.062a.75.75 0 0 1 1.062 0ZM3 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 3 10ZM14 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 14 10ZM5.05 16.95a.75.75 0 0 1 0-1.06l1.06-1.062a.75.75 0 0 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0ZM14.95 16.95a.75.75 0 0 1-1.06 0l-1.062-1.06a.75.75 0 0 1 1.06-1.06l1.062 1.06a.75.75 0 0 1 0 1.06ZM10 17a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 17Z" />
   </svg>
@@ -117,12 +118,49 @@ const ExpandIcon = () => (
   </svg>
 );
 
-/* ─── Tab Data ─── */
+const MindMapIcon = ({ className = "h-5 w-5" }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={className}
+  >
+    <circle cx="5" cy="5" r="2" />
+    <circle cx="5" cy="15" r="2" />
+    <circle cx="15" cy="10" r="2.5" />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M6.8 6.2 12.6 8.9M6.8 13.8 12.6 11.1"
+    />
+  </svg>
+);
+
+const ChatBubbleIcon = ({ className = "h-5 w-5" }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={className}
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M5.5 4.5h9A2.5 2.5 0 0 1 17 7v4.5A2.5 2.5 0 0 1 14.5 14H9l-3.5 2v-2H5.5A2.5 2.5 0 0 1 3 11.5V7a2.5 2.5 0 0 1 2.5-2.5Z"
+    />
+    <path strokeLinecap="round" d="M7 8.5h6M7 11h4" />
+  </svg>
+);
+
 const AI_TABS = [
-  { id: "summary", label: "Summary", icon: "✨" },
-  { id: "diagram", label: "Mind Map", icon: "🗺" },
-  { id: "ask", label: "Ask AI", icon: "🧠" },
-  { id: "related", label: "Related", icon: "🔗" },
+  { id: "summary", label: "Summary", Icon: SparklesIcon },
+  { id: "mindmap", label: "Mind Map", Icon: MindMapIcon },
+  { id: "ask", label: "Ask AI", Icon: ChatBubbleIcon },
+  { id: "related", label: "Related", Icon: ExternalLinkIcon },
 ];
 
 const findMindMapNodeById = (node, targetId) => {
@@ -189,7 +227,7 @@ const CloseIcon = () => (
   </svg>
 );
 
-/* ─── Reusable Components ─── */
+/* Reusable Components */
 const Skeleton = ({ className = "" }) => (
   <div className={`animate-pulse rounded-2xl bg-sks-slate-100 ${className}`} />
 );
@@ -208,34 +246,6 @@ const InlineAlert = ({ children, tone = "info" }) => {
     </div>
   );
 };
-
-const SourceCard = ({ source, onOpen }) => (
-  <button
-    type="button"
-    onClick={() => onOpen?.(source.documentId)}
-    className="group block w-full rounded-2xl border border-sks-slate-100 bg-white p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-sks-primary/20 hover:shadow-sks-soft active:scale-[0.98]"
-  >
-    <div className="flex items-center justify-between gap-3">
-      <p className="truncate text-[14px] font-black tracking-tight text-sks-slate-900 transition-colors group-hover:text-sks-primary">
-        {source.documentName}
-      </p>
-      {typeof source.score === "number" && (
-        <span className="shrink-0 rounded-full bg-sks-primary-light px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-sks-primary">
-          {Math.round(source.score * 100)}% Match
-        </span>
-      )}
-    </div>
-    {source.snippet && (
-      <p className="mt-3 line-clamp-2 text-[13px] leading-relaxed text-sks-slate-500 italic">
-        "{source.snippet}"
-      </p>
-    )}
-    <p className="mt-3 text-[10px] font-black uppercase tracking-[0.2em] text-sks-slate-400">
-      Source Fragment · Ch {source.chunkIndex}{" "}
-      {source.pageNumber ? ` · P. ${source.pageNumber}` : ""}
-    </p>
-  </button>
-);
 
 const RelatedCard = ({ document, onOpen }) => {
   const file = getFilePresentation(document);
@@ -259,15 +269,15 @@ const RelatedCard = ({ document, onOpen }) => {
           {document.title}
         </p>
         <p className="mt-1 text-[11px] font-bold text-sks-slate-400">
-          {document.folderName || "General Workspace"} ·{" "}
-          {document.formattedFileSize || "—"}
+          {document.folderName || "General Workspace"} |{" "}
+          {document.formattedFileSize || "-"}
         </p>
       </div>
     </button>
   );
 };
 
-/* ─── Main Component ─── */
+/* Main Component */
 const DocumentViewer = () => {
   const navigate = useNavigate();
   const { documentId } = useParams();
@@ -298,7 +308,7 @@ const DocumentViewer = () => {
   const [isMindMapModalOpen, setIsMindMapModalOpen] = useState(false);
   const [isMindMapRefreshConfirmOpen, setIsMindMapRefreshConfirmOpen] =
     useState(false);
-  const [diagramState, setDiagramState] = useState({
+  const [mindMapState, setMindMapState] = useState({
     loading: false,
     error: "",
     data: null,
@@ -325,7 +335,7 @@ const DocumentViewer = () => {
   const isResizing = useRef(false);
   const containerRef = useRef(null);
 
-  /* ─── Resize Handler ─── */
+  /* Resize Handler */
   const handleMouseDown = useCallback((e) => {
     e.preventDefault();
     isResizing.current = true;
@@ -353,12 +363,12 @@ const DocumentViewer = () => {
     window.addEventListener("mouseup", onMouseUp);
   }, []);
 
-  /* ─── Data Persistence ─── */
+  /* Data Persistence */
   useEffect(() => {
     if (documentData?.id) rememberRecentDocument(documentData.id);
   }, [documentData?.id]);
 
-  /* ─── Data Loading ─── */
+  /* Data Loading */
   useEffect(() => {
     if (!documentId) return undefined;
     let isActive = true;
@@ -420,7 +430,7 @@ const DocumentViewer = () => {
     };
   }, [documentId]);
 
-  /* ─── Tabs Cleanup ─── */
+  /* Tabs Cleanup */
   useEffect(() => {
     setActiveTab("summary");
     setSummaryState({ loading: false, error: "", data: null });
@@ -428,7 +438,7 @@ const DocumentViewer = () => {
     setIsSummaryRefreshConfirmOpen(false);
     setIsMindMapModalOpen(false);
     setIsMindMapRefreshConfirmOpen(false);
-    setDiagramState({ loading: false, error: "", data: null });
+    setMindMapState({ loading: false, error: "", data: null });
     setSelectedMindMapNodeId(null);
     setMindMapViewMode("explore");
     setExpandedMindMapNodeIds([]);
@@ -443,7 +453,7 @@ const DocumentViewer = () => {
     setAskState({ loading: false, error: "", pendingQuestion: "" });
   }, [documentId]);
 
-  /* ─── AI Logic ─── */
+  /* AI Logic */
   const loadSummary = useCallback(
     async (language = selectedLanguage, options = {}) => {
       if (!documentId || summaryState.loading) return;
@@ -471,18 +481,18 @@ const DocumentViewer = () => {
     [documentId, selectedLanguage, summaryState.loading],
   );
 
-  const loadDiagram = useCallback(
+  const loadMindMap = useCallback(
     async (language = selectedLanguage, options = {}) => {
-      if (!documentId || diagramState.loading) return;
+      if (!documentId || mindMapState.loading) return;
       try {
         const targetLanguage = language || selectedLanguage;
         const forceRefresh = Boolean(options.forceRefresh);
         setSelectedLanguage(targetLanguage);
-        setDiagramState((s) => ({ ...s, loading: true, error: "" }));
+        setMindMapState((s) => ({ ...s, loading: true, error: "" }));
         const result = await getDocumentMindMap(documentId, targetLanguage, {
           forceRefresh,
         });
-        setDiagramState({
+        setMindMapState({
           loading: false,
           error: "",
           data: {
@@ -498,7 +508,7 @@ const DocumentViewer = () => {
         setMindMapViewMode("explore");
         setExpandedMindMapNodeIds(rootId ? [rootId] : []);
       } catch (err) {
-        setDiagramState({
+        setMindMapState({
           loading: false,
           error:
             err.response?.data?.message || "AI could not build this mind map.",
@@ -508,7 +518,7 @@ const DocumentViewer = () => {
         setExpandedMindMapNodeIds([]);
       }
     },
-    [documentId, diagramState.loading, selectedLanguage],
+    [documentId, mindMapState.loading, selectedLanguage],
   );
 
   const loadAskHistory = useCallback(async () => {
@@ -567,7 +577,7 @@ const DocumentViewer = () => {
     }
   }, [documentId, askHistoryState.clearing]);
 
-  /* ─── Actions ─── */
+  /* Actions */
   const handleToggleFavorite = async (id) => {
     try {
       await toggleFavorite(id);
@@ -596,7 +606,7 @@ const DocumentViewer = () => {
     }
   };
 
-  /* ─── Sync doc info and actions (Simplified) ─── */
+  /* Actions */
   useEffect(() => {
     return () => clearDocViewer();
   }, [clearDocViewer]);
@@ -664,11 +674,11 @@ const DocumentViewer = () => {
 
   const selectedMindMapNode = useMemo(
     () =>
-      findMindMapNodeById(diagramState.data?.mindMap, selectedMindMapNodeId),
-    [diagramState.data?.mindMap, selectedMindMapNodeId],
+      findMindMapNodeById(mindMapState.data?.mindMap, selectedMindMapNodeId),
+    [mindMapState.data?.mindMap, selectedMindMapNodeId],
   );
 
-  const rootMindMapId = diagramState.data?.mindMap?.id || null;
+  const rootMindMapId = mindMapState.data?.mindMap?.id || null;
 
   const expandedMindMapNodeIdSet = useMemo(
     () => new Set(expandedMindMapNodeIds),
@@ -690,7 +700,7 @@ const DocumentViewer = () => {
       }
 
       const targetNode = findMindMapNodeById(
-        diagramState.data?.mindMap,
+        mindMapState.data?.mindMap,
         nodeId,
       );
 
@@ -716,7 +726,7 @@ const DocumentViewer = () => {
       );
     },
     [
-      diagramState.data?.mindMap,
+      mindMapState.data?.mindMap,
       expandedMindMapNodeIds,
       mindMapViewMode,
       selectedMindMapNodeId,
@@ -742,7 +752,7 @@ const DocumentViewer = () => {
         if (
           selectedMindMapNodeId &&
           !isMindMapNodeVisible(
-            diagramState.data?.mindMap,
+            mindMapState.data?.mindMap,
             selectedMindMapNodeId,
             new Set(nextExpandedIds),
             false,
@@ -754,7 +764,7 @@ const DocumentViewer = () => {
       }
     },
     [
-      diagramState.data?.mindMap,
+      mindMapState.data?.mindMap,
       expandedMindMapNodeIds,
       rootMindMapId,
       selectedMindMapNodeId,
@@ -763,17 +773,17 @@ const DocumentViewer = () => {
 
   const handleMindMapLanguageChange = useCallback(
     (language) => {
-      if (diagramState.data?.mindMap) {
-        void loadDiagram(language);
+      if (mindMapState.data?.mindMap) {
+        void loadMindMap(language);
         return;
       }
 
       setSelectedLanguage(language);
     },
-    [diagramState.data?.mindMap, loadDiagram],
+    [mindMapState.data?.mindMap, loadMindMap],
   );
 
-  /* ─── Tab Components ─── */
+  /* Tab Components */
   const renderSummary = () => {
     if (!summaryState.loading && !summaryState.data && !summaryState.error)
       return (
@@ -781,7 +791,7 @@ const DocumentViewer = () => {
           <div className="relative mb-10">
             <div className="absolute -inset-8 rounded-full bg-cyan-100/40 animate-pulse" />
             <div className="relative flex h-20 w-20 items-center justify-center rounded-[28px] bg-gradient-to-br from-cyan-500 to-blue-600 text-white text-3xl shadow-2xl shadow-cyan-500/30">
-              ✨
+              <SparklesIcon className="h-8 w-8" />
             </div>
           </div>
 
@@ -797,7 +807,7 @@ const DocumentViewer = () => {
               onClick={() => setSelectedLanguage("vi")}
               className={`flex-1 rounded-xl py-2 text-[10px] font-black uppercase tracking-widest transition-all ${selectedLanguage === "vi" ? "bg-white text-cyan-600 shadow-sm ring-1 ring-slate-200/50" : "text-slate-400 hover:text-slate-600"}`}
             >
-              Tiếng Việt
+              Vietnamese
             </button>
             <button
               onClick={() => setSelectedLanguage("en")}
@@ -947,7 +957,7 @@ const DocumentViewer = () => {
       return null;
     }
 
-    const detailLanguage = diagramState.data?.language || selectedLanguage;
+    const detailLanguage = mindMapState.data?.language || selectedLanguage;
     const isVietnamese = detailLanguage === "vi";
     const childCount = selectedMindMapNode.children?.length || 0;
     const summaryText =
@@ -1086,16 +1096,16 @@ const DocumentViewer = () => {
     );
   };
 
-  const renderDiagram = () => {
+  const renderMindMap = () => {
     const isShowingAllNodes = mindMapViewMode === "all";
 
-    if (!diagramState.loading && !diagramState.data && !diagramState.error) {
+    if (!mindMapState.loading && !mindMapState.data && !mindMapState.error) {
       return (
         <div className="flex flex-col items-center justify-center py-10 text-center animate-fade-in">
           <div className="relative mb-10">
             <div className="absolute -inset-8 rounded-full bg-cyan-100/40 animate-pulse" />
             <div className="relative flex h-20 w-20 items-center justify-center rounded-[28px] bg-gradient-to-br from-cyan-500 to-blue-600 text-white text-3xl shadow-2xl shadow-cyan-500/30">
-              🗺
+              <MindMapIcon className="h-8 w-8" />
             </div>
           </div>
 
@@ -1112,7 +1122,7 @@ const DocumentViewer = () => {
               onClick={() => setSelectedLanguage("vi")}
               className={`flex-1 rounded-xl py-2 text-[10px] font-black uppercase tracking-widest transition-all ${selectedLanguage === "vi" ? "bg-white text-cyan-600 shadow-sm ring-1 ring-slate-200/50" : "text-slate-400 hover:text-slate-600"}`}
             >
-              Tiếng Việt
+              Vietnamese
             </button>
             <button
               onClick={() => setSelectedLanguage("en")}
@@ -1123,7 +1133,7 @@ const DocumentViewer = () => {
           </div>
 
           <button
-            onClick={() => void loadDiagram(selectedLanguage)}
+            onClick={() => void loadMindMap(selectedLanguage)}
             className="group relative flex h-14 w-full items-center justify-center gap-4 overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 px-8 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-cyan-500/20 transition-all hover:scale-[1.02] active:scale-95"
           >
             <span>Generate Mind Map</span>
@@ -1133,7 +1143,7 @@ const DocumentViewer = () => {
       );
     }
 
-    if (diagramState.loading) {
+    if (mindMapState.loading) {
       return (
         <div className="space-y-4 animate-pulse">
           <Skeleton className="h-36 w-full rounded-[28px]" />
@@ -1143,9 +1153,9 @@ const DocumentViewer = () => {
       );
     }
 
-    if (diagramState.error)
-      return <InlineAlert tone="error">{diagramState.error}</InlineAlert>;
-    if (!diagramState.data?.mindMap) return null;
+    if (mindMapState.error)
+      return <InlineAlert tone="error">{mindMapState.error}</InlineAlert>;
+    if (!mindMapState.data?.mindMap) return null;
 
     return (
       <div className="flex flex-col h-full gap-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1153,7 +1163,7 @@ const DocumentViewer = () => {
         <div className="flex items-center justify-between gap-2 flex-shrink-0">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 text-white text-xs shadow-md shadow-cyan-500/20">
-              🗺
+              <MindMapIcon className="h-4 w-4" />
             </div>
             <span className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">
               Mind Map
@@ -1219,21 +1229,23 @@ const DocumentViewer = () => {
           </div>
         </div>
 
-        {/* Canvas — chiếm toàn bộ không gian còn lại */}
+        {/* Canvas takes the remaining available space */}
         <div className="relative flex-1 rounded-[1.5rem] bg-slate-50/60 border border-slate-200/60 overflow-hidden shadow-inner min-h-0">
-          <MindMapCanvas
-            mindMap={diagramState.data.mindMap}
-            selectedNodeId={selectedMindMapNode?.id}
-            expandedNodeIds={expandedMindMapNodeIdSet}
-            showAllNodes={isShowingAllNodes}
-            onNodeSelect={handleMindMapNodeSelect}
-            onNodeToggle={handleMindMapNodeToggle}
-            language={diagramState.data.language || selectedLanguage}
-            height="100%"
-            compact
-          />
+          <Suspense fallback={<Skeleton className="h-full w-full rounded-none" />}>
+            <MindMapCanvas
+              mindMap={mindMapState.data.mindMap}
+              selectedNodeId={selectedMindMapNode?.id}
+              expandedNodeIds={expandedMindMapNodeIdSet}
+              showAllNodes={isShowingAllNodes}
+              onNodeSelect={handleMindMapNodeSelect}
+              onNodeToggle={handleMindMapNodeToggle}
+              language={mindMapState.data.language || selectedLanguage}
+              height="100%"
+              compact
+            />
+          </Suspense>
 
-          {/* Node Detail — floating overlay bên trong canvas */}
+          {/* Node detail overlay inside the canvas */}
           {selectedMindMapNode && (
             <div className="pointer-events-none absolute bottom-3 right-3">
               {renderMindMapNodeDetail("compact")}
@@ -1243,182 +1255,6 @@ const DocumentViewer = () => {
       </div>
     );
   };
-
-  const renderAskLegacy = () => {
-    const _suggestedQuestions = [
-      "Tóm tắt nội dung chính của tài liệu này?",
-      "Các khái niệm quan trọng nhất là gì?",
-      "Giải thích phần khó hiểu nhất?",
-    ];
-
-    return (
-      <div className="flex flex-col h-full gap-0">
-        {/* Chat Messages */}
-        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none px-1 py-4 space-y-6">
-          {/* Empty State */}
-          {!askState.answer && !askState.loading && (
-            <div className="flex flex-col items-center justify-center h-full text-center animate-in fade-in duration-500">
-              <div className="relative mb-5">
-                <div className="absolute -inset-4 rounded-full bg-cyan-100/50 animate-pulse" />
-                <div className="relative flex h-16 w-16 items-center justify-center rounded-[20px] bg-gradient-to-br from-cyan-500 to-blue-600 text-white text-2xl shadow-xl shadow-cyan-500/25">
-                  🧠
-                </div>
-              </div>
-              <h3 className="text-[13px] font-black text-slate-900 uppercase tracking-[0.2em] mb-1.5">
-                Ask AI
-              </h3>
-              <p className="text-[11px] text-slate-400 font-medium">
-                Ask your questions below to get started
-              </p>
-            </div>
-          )}
-
-          {/* Loading skeleton */}
-          {askState.loading && !askState.answer && (
-            <div className="flex justify-end animate-in fade-in duration-300">
-              <div className="max-w-[85%] rounded-[1.25rem] rounded-tr-sm bg-slate-900 px-4 py-3 text-[13px] font-medium text-slate-100 shadow-lg">
-                {askQuestion}
-              </div>
-            </div>
-          )}
-
-          {/* Q&A Message */}
-          {askState.answer && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-400">
-              {/* User Bubble */}
-              <div className="flex justify-end">
-                <div className="max-w-[86%] rounded-[1.25rem] rounded-tr-sm bg-slate-900 px-4 py-3 text-[13px] font-medium leading-relaxed text-slate-100 shadow-lg">
-                  {askQuestion}
-                </div>
-              </div>
-
-              {/* AI Bubble */}
-              <div className="flex justify-start gap-3">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20 mt-0.5">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    className="h-3.5 w-3.5"
-                  >
-                    <path d="M15.98 1.804a1 1 0 0 0-1.96 0l-.24 1.192a1 1 0 0 1-.784.785l-1.192.238a1 1 0 0 0 0 1.962l1.192.238a1 1 0 0 1 .785.785l.238 1.192a1 1 0 0 0 1.962 0l.238-1.192a1 1 0 0 1 .785-.785l1.192-.238a1 1 0 0 0 0-1.962l-1.192-.238a1 1 0 0 1-.785-.785l-.238-1.192ZM6.949 5.684a1 1 0 0 0-1.898 0l-.683 2.051a1 1 0 0 1-.633.633l-2.051.683a1 1 0 0 0 0 1.898l2.051.684a1 1 0 0 1 .633.632l.683 2.051a1 1 0 0 0 1.898 0l.683-2.051a1 1 0 0 1 .633-.633l2.051-.683a1 1 0 0 0 0-1.898l-2.051-.683a1 1 0 0 1-.633-.633L6.95 5.684Z" />
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="mb-1.5 flex items-center gap-2">
-                    <span className="text-[9px] font-black uppercase tracking-[0.3em] text-cyan-600">
-                      SKS Intelligence
-                    </span>
-                  </div>
-                  <div className="rounded-[1.25rem] rounded-tl-sm border border-slate-100 bg-white px-5 py-4 shadow-sm">
-                    <p className="whitespace-pre-wrap text-[14px] leading-[1.8] text-slate-700 font-medium">
-                      {askState.answer}
-                    </p>
-                  </div>
-                  {askState.sources?.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3 pl-1">
-                      {askState.sources.map((s, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center gap-1.5 rounded-xl border border-cyan-100 bg-cyan-50 px-3 py-1.5"
-                        >
-                          <div className="h-1.5 w-1.5 rounded-full bg-cyan-500" />
-                          <span className="text-[9px] font-black uppercase tracking-wider text-cyan-600">
-                            Nguồn {i + 1}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Typing indicator */}
-          {askState.loading && (
-            <div className="flex justify-start gap-3 animate-in fade-in duration-300">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  className="h-3.5 w-3.5"
-                >
-                  <path d="M15.98 1.804a1 1 0 0 0-1.96 0l-.24 1.192a1 1 0 0 1-.784.785l-1.192.238a1 1 0 0 0 0 1.962l1.192.238a1 1 0 0 1 .785.785l.238 1.192a1 1 0 0 0 1.962 0l.238-1.192a1 1 0 0 1 .785-.785l1.192-.238a1 1 0 0 0 0-1.962l-1.192-.238a1 1 0 0 1-.785-.785l-.238-1.192ZM6.949 5.684a1 1 0 0 0-1.898 0l-.683 2.051a1 1 0 0 1-.633.633l-2.051.683a1 1 0 0 0 0 1.898l2.051.684a1 1 0 0 1 .633.632l.683 2.051a1 1 0 0 0 1.898 0l.683-2.051a1 1 0 0 1 .633-.633l2.051-.683a1 1 0 0 0 0-1.898l-2.051-.683a1 1 0 0 1-.633-.633L6.95 5.684Z" />
-                </svg>
-              </div>
-              <div className="rounded-[1.25rem] rounded-tl-sm border border-slate-100 bg-white px-5 py-4 shadow-sm">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-slate-300 animate-bounce [animation-delay:-0.3s]" />
-                  <span className="h-2 w-2 rounded-full bg-slate-300 animate-bounce [animation-delay:-0.15s]" />
-                  <span className="h-2 w-2 rounded-full bg-slate-300 animate-bounce" />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Input Bar */}
-        <div className="shrink-0 pt-2 pb-3 px-1">
-          <div className="relative group">
-            <div className="absolute -inset-0.5 rounded-2xl bg-gradient-to-r from-cyan-500/30 to-blue-500/30 blur-sm opacity-0 group-focus-within:opacity-100 transition-all duration-500" />
-            <div className="relative flex items-end gap-0 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden group-focus-within:border-cyan-400 group-focus-within:shadow-lg group-focus-within:shadow-cyan-500/10 transition-all duration-300">
-              <textarea
-                ref={chatInputRef}
-                value={askQuestion}
-                onChange={(e) => {
-                  setAskQuestion(e.target.value);
-                  e.target.style.height = "auto";
-                  e.target.style.height =
-                    Math.min(e.target.scrollHeight, 120) + "px";
-                }}
-                onKeyDown={handleAskKeyDown}
-                rows={1}
-                placeholder="Ask anything about the document..."
-                className="flex-1 min-h-[48px] resize-none bg-transparent py-3.5 pl-4 pr-2 text-[13px] font-medium text-slate-900 placeholder:text-slate-400 outline-none scrollbar-none"
-                style={{ maxHeight: "120px" }}
-              />
-              <div className="flex items-end p-2">
-                <button
-                  type="button"
-                  onClick={() => void handleAsk()}
-                  disabled={askState.loading || !askQuestion.trim()}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed disabled:scale-100"
-                >
-                  {askState.loading ? (
-                    <svg
-                      className="h-4 w-4 animate-spin"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                  ) : (
-                    <SendIcon />
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  void renderAskLegacy;
 
   const renderAsk = () => {
     const hasHistory = askHistoryState.items.length > 0;
@@ -1681,11 +1517,11 @@ const DocumentViewer = () => {
   );
 
   const renderMindMapModal = () => {
-    if (!diagramState.data?.mindMap) {
+    if (!mindMapState.data?.mindMap) {
       return null;
     }
 
-    const diagramLanguage = diagramState.data.language || selectedLanguage;
+    const mindMapLanguage = mindMapState.data.language || selectedLanguage;
     const isShowingAllNodes = mindMapViewMode === "all";
 
     return (
@@ -1695,7 +1531,7 @@ const DocumentViewer = () => {
           <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-100 px-8 bg-white/80 backdrop-blur-xl">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/10">
-                <span className="text-sm">🗺</span>
+                <MindMapIcon className="h-4 w-4" />
               </div>
               <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-900">
                 Mind Map
@@ -1708,7 +1544,7 @@ const DocumentViewer = () => {
                   type="button"
                   onClick={() => handleMindMapLanguageChange("vi")}
                   className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
-                    diagramLanguage === "vi"
+                    mindMapLanguage === "vi"
                       ? "bg-white text-slate-900 shadow-sm"
                       : "text-slate-400 hover:text-slate-700"
                   }`}
@@ -1719,7 +1555,7 @@ const DocumentViewer = () => {
                   type="button"
                   onClick={() => handleMindMapLanguageChange("en")}
                   className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
-                    diagramLanguage === "en"
+                    mindMapLanguage === "en"
                       ? "bg-white text-slate-900 shadow-sm"
                       : "text-slate-400 hover:text-slate-700"
                   }`}
@@ -1774,17 +1610,19 @@ const DocumentViewer = () => {
 
           {/* Visualization Canvas */}
           <div className="relative min-h-0 flex-1 flex overflow-hidden bg-slate-50/40">
-            <MindMapCanvas
-              mindMap={diagramState.data.mindMap}
-              selectedNodeId={selectedMindMapNode?.id}
-              expandedNodeIds={expandedMindMapNodeIdSet}
-              showAllNodes={isShowingAllNodes}
-              onNodeSelect={handleMindMapNodeSelect}
-              onNodeToggle={handleMindMapNodeToggle}
-              language={diagramState.data.language || selectedLanguage}
-              height="100%"
-              compact={false}
-            />
+            <Suspense fallback={<Skeleton className="h-full w-full rounded-none" />}>
+              <MindMapCanvas
+                mindMap={mindMapState.data.mindMap}
+                selectedNodeId={selectedMindMapNode?.id}
+                expandedNodeIds={expandedMindMapNodeIdSet}
+                showAllNodes={isShowingAllNodes}
+                onNodeSelect={handleMindMapNodeSelect}
+                onNodeToggle={handleMindMapNodeToggle}
+                language={mindMapState.data.language || selectedLanguage}
+                height="100%"
+                compact={false}
+              />
+            </Suspense>
 
             {selectedMindMapNode && (
               <>
@@ -2046,11 +1884,11 @@ const DocumentViewer = () => {
   };
 
   const renderMindMapRefreshConfirmModal = () => {
-    if (!diagramState.data?.mindMap) return null;
+    if (!mindMapState.data?.mindMap) return null;
 
-    const activeDiagramLanguage =
-      diagramState.data.language || selectedLanguage;
-    const languageLabel = activeDiagramLanguage === "vi" ? "VI" : "EN";
+    const activeMindMapLanguage =
+      mindMapState.data.language || selectedLanguage;
+    const languageLabel = activeMindMapLanguage === "vi" ? "VI" : "EN";
 
     return (
       <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/50 p-5 backdrop-blur-md animate-in fade-in duration-300">
@@ -2089,7 +1927,7 @@ const DocumentViewer = () => {
               type="button"
               onClick={() => {
                 setIsMindMapRefreshConfirmOpen(false);
-                void loadDiagram(activeDiagramLanguage, { forceRefresh: true });
+                void loadMindMap(activeMindMapLanguage, { forceRefresh: true });
               }}
               className="rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 px-6 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-cyan-500/20 transition-all hover:scale-[1.02] active:scale-95"
             >
@@ -2101,7 +1939,7 @@ const DocumentViewer = () => {
     );
   };
 
-  /* ─── RENDER ─── */
+  /* Render */
   const filePresentation = useMemo(
     () => getFilePresentation(documentData || { title: "", fileRef: "" }),
     [documentData],
@@ -2237,34 +2075,40 @@ const DocumentViewer = () => {
 
               {/* Segmented Control Tabs */}
               <div className="flex p-1 rounded-2xl bg-slate-100/60 ring-1 ring-inset ring-slate-200/40">
-                {AI_TABS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`relative flex flex-1 items-center justify-center gap-2 rounded-xl py-2 text-[9px] font-black uppercase tracking-[0.15em] transition-all duration-300 ${
-                      activeTab === tab.id
-                        ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/50"
-                        : "text-slate-400 hover:text-slate-600"
-                    }`}
-                  >
-                    <span className="text-sm">{tab.icon}</span>
-                    <span className="hidden xl:inline">{tab.label}</span>
-                  </button>
-                ))}
+                {AI_TABS.map((tab) => {
+                  const Icon = tab.Icon;
+
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`relative flex flex-1 items-center justify-center gap-2 rounded-xl py-2 text-[9px] font-black uppercase tracking-[0.15em] transition-all duration-300 ${
+                        activeTab === tab.id
+                          ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/50"
+                          : "text-slate-400 hover:text-slate-600"
+                      }`}
+                    >
+                      <span className="flex h-4 w-4 items-center justify-center">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="hidden xl:inline">{tab.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             {/* AI Content Area */}
             <div
               className={`flex-1 min-h-0 animate-soft-reveal scrollbar-none ${
-                activeTab === "diagram" || activeTab === "ask"
+                activeTab === "mindmap" || activeTab === "ask"
                   ? "flex flex-col overflow-hidden px-6 pt-4 pb-0"
                   : "overflow-y-auto px-6 py-5 pb-24"
               }`}
               key={activeTab}
             >
               {activeTab === "summary" && renderSummary()}
-              {activeTab === "diagram" && renderDiagram()}
+              {activeTab === "mindmap" && renderMindMap()}
               {activeTab === "ask" && renderAsk()}
               {activeTab === "related" && renderRelated()}
             </div>

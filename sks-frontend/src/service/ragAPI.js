@@ -38,7 +38,7 @@ const buildMindMapClusterSummary = (keyPoints, language) => {
     : `${keyPoints.length} key ideas synthesized from the document content.`;
 };
 
-const buildMindMapClusterStudySummary = (keyPoints, language) => {
+const buildMindMapClusterPreviewSummary = (keyPoints, language) => {
   const baseSummary = buildMindMapClusterSummary(keyPoints, language);
   const previewPoints = (keyPoints || [])
     .slice(0, 2)
@@ -56,7 +56,7 @@ const buildMindMapClusterStudySummary = (keyPoints, language) => {
   return truncateText(`${baseSummary} ${previewLabel}`, 320);
 };
 
-const buildSummaryPlainText = (summary) => {
+const buildSummaryText = (summary) => {
   const sections = [
     summary.title,
     summary.overview,
@@ -71,7 +71,7 @@ const buildSummaryPlainText = (summary) => {
   return sections.join('\n').trim();
 };
 
-const buildMindMapFromSummary = (summary, language = 'en') => {
+const buildSummaryMindMap = (summary, language = 'en') => {
   const overviewNode = {
     id: 'overview',
     label: language === 'vi' ? 'Tong quan' : 'Overview',
@@ -91,7 +91,10 @@ const buildMindMapFromSummary = (summary, language = 'en') => {
   const clusterNode = {
     id: 'key-ideas',
     label: language === 'vi' ? 'Y chinh' : 'Key ideas',
-    summary: buildMindMapClusterStudySummary(summary.key_points || [], language),
+    summary: buildMindMapClusterPreviewSummary(
+      summary.key_points || [],
+      language,
+    ),
     kind: 'cluster',
     children: insightNodes,
   };
@@ -109,6 +112,20 @@ const buildMindMapFromSummary = (summary, language = 'en') => {
     summary: truncateText(summary.overview, 420),
     kind: 'root',
     children: [overviewNode, clusterNode, takeawayNode],
+  };
+};
+
+const buildMindMapFallbackResponse = (summary, requestedLanguage) => {
+  const resolvedLanguage = summary.language || requestedLanguage;
+
+  return {
+    message: 'Document mind map generated successfully',
+    mindMap: buildSummaryMindMap(summary, resolvedLanguage),
+    summary: buildSummaryText(summary),
+    language: resolvedLanguage,
+    generatedAt: summary.generatedAt || new Date().toISOString(),
+    cached: Boolean(summary.cached),
+    compatibilityMode: true,
   };
 };
 
@@ -156,26 +173,13 @@ const getDocumentMindMap = async (
     if (error.response?.status !== 404) {
       throw error;
     }
-  
+
     const summary = await getDocumentSummary(documentId, language, {
       forceRefresh: options.forceRefresh,
     });
 
-    return {
-      message: 'Document mind map generated successfully',
-      mindMap: buildMindMapFromSummary(summary, summary.language || language),
-      summary: buildSummaryPlainText(summary),
-      language: summary.language || language,
-      generatedAt: summary.generatedAt || new Date().toISOString(),
-      cached: Boolean(summary.cached),
-      compatibilityMode: true,
-    };
+    return buildMindMapFallbackResponse(summary, language);
   }
-};
-
-const getDocumentDiagram = async (documentId) => {
-  const response = await apiClient.post(`/rag/documents/${documentId}/diagram`);
-  return response.data;
 };
 
 export {
@@ -183,6 +187,5 @@ export {
   clearDocumentAskHistory,
   getDocumentAskHistory,
   getDocumentMindMap,
-  getDocumentDiagram,
   getDocumentSummary,
 };

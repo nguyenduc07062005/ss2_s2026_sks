@@ -36,11 +36,20 @@ const WorkspaceShell = () => {
 
     void loadProfile();
 
-    const handleScroll = () => setIsScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', handleScroll);
+    const handleScroll = (e) => {
+      const scrollTop =
+        (e.target && e.target.scrollTop) ||
+        window.scrollY ||
+        document.documentElement.scrollTop ||
+        0;
+      setIsScrolled(scrollTop > 20);
+    };
+
+    // Use capturing phase (true) to catch ALL scroll events, even from inner containers
+    window.addEventListener('scroll', handleScroll, true);
     return () => {
       isActive = false;
-      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('scroll', handleScroll, true);
     };
   }, []);
 
@@ -55,16 +64,17 @@ const WorkspaceShell = () => {
   };
 
   return (
-    <main className={`text-slate-900 relative overflow-x-hidden font-sans ${isDocumentViewer ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
-      {/* Dynamic Background */}
-      <div className="fixed inset-0 -z-10 bg-slate-50/50" />
-      <div className="absolute top-0 right-0 -z-10 h-[50rem] w-[50rem] opacity-[0.12] mix-blend-multiply blur-3xl transform translate-x-1/3 -translate-y-1/2 rounded-full bg-gradient-to-tr from-cyan-400 via-blue-400 to-sky-300 pointer-events-none animate-spin-slow" />
-      <div className="absolute top-40 left-0 -z-10 h-[40rem] w-[40rem] opacity-[0.12] mix-blend-multiply blur-3xl transform -translate-x-1/2 rounded-full bg-gradient-to-bl from-cyan-300 via-teal-300 to-emerald-400 pointer-events-none" />
+    <main className={`text-slate-900 relative font-sans ${isDocumentViewer ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
+      {/* Dynamic Background Container (fixes horizontal scroll without breaking vertical scrollbars) */}
+      <div className="fixed inset-0 -z-10 overflow-hidden bg-slate-50/50">
+        <div className="absolute top-0 right-0 h-[50rem] w-[50rem] opacity-[0.12] mix-blend-multiply blur-3xl transform translate-x-1/3 -translate-y-1/2 rounded-full bg-gradient-to-tr from-cyan-400 via-blue-400 to-sky-300 pointer-events-none animate-spin-slow" />
+        <div className="absolute top-40 left-0 h-[40rem] w-[40rem] opacity-[0.12] mix-blend-multiply blur-3xl transform -translate-x-1/2 rounded-full bg-gradient-to-bl from-cyan-300 via-teal-300 to-emerald-400 pointer-events-none" />
+      </div>
 
       <header
-        className={`fixed top-0 left-0 right-0 z-50 flex w-full items-center transition-all duration-700 ${
+        className={`fixed top-0 left-0 right-0 z-[100] flex w-full items-center transition-all duration-300 ${
           isScrolled
-            ? 'h-14 border-b border-slate-200/40 bg-white/60 shadow-sm backdrop-blur-3xl'
+            ? 'h-16 border-b border-slate-200/60 bg-white/95 shadow-md backdrop-blur-xl'
             : 'h-20 bg-transparent border-transparent shadow-none'
         }`}
       >

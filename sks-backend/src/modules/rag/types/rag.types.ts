@@ -19,6 +19,11 @@ export type AskHistoryItem = {
   createdAt: string;
 };
 
+export type RagAnswerResponse = {
+  answer: string;
+  sources: RagSource[];
+};
+
 export type StructuredDocumentSummary = {
   title: string;
   overview: string;
@@ -62,6 +67,14 @@ export type MindMapArtifact = {
   generatedAt: string;
   summaryLanguage: SummaryLanguage;
   version: number;
+};
+
+export type DocumentMindMapResponse = {
+  mindMap: MindMapNode;
+  summary: string;
+  language: SummaryLanguage;
+  generatedAt: string;
+  cached: boolean;
 };
 
 export type DiagramArtifact = {
