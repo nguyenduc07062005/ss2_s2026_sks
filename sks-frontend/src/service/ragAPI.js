@@ -19,6 +19,21 @@ const truncateText = (value, maxLength) => {
   return `${safeSlice}...`;
 };
 
+const getNarrativeSummaryBody = (summary) => {
+  if (
+    summary?.format === 'narrative' &&
+    typeof summary?.body === 'string' &&
+    summary.body.trim()
+  ) {
+    return normalizeText(summary.body);
+  }
+
+  return '';
+};
+
+const getSummaryLeadText = (summary) =>
+  getNarrativeSummaryBody(summary) || normalizeText(summary?.overview || '');
+
 const buildMindMapInsightLabel = (point) => {
   const normalizedPoint = normalizeText(point).replace(/^[-*]\s*/, '');
   const condensedLabel = normalizedPoint.split(/\s+/).slice(0, 6).join(' ');
@@ -57,6 +72,12 @@ const buildMindMapClusterPreviewSummary = (keyPoints, language) => {
 };
 
 const buildSummaryText = (summary) => {
+  const narrativeBody = getNarrativeSummaryBody(summary);
+
+  if (narrativeBody) {
+    return [summary.title, narrativeBody].filter(Boolean).join('\n\n').trim();
+  }
+
   const sections = [
     summary.title,
     summary.overview,
@@ -72,10 +93,11 @@ const buildSummaryText = (summary) => {
 };
 
 const buildSummaryMindMap = (summary, language = 'en') => {
+  const leadText = getSummaryLeadText(summary);
   const overviewNode = {
     id: 'overview',
     label: language === 'vi' ? 'Tong quan' : 'Overview',
-    summary: truncateText(summary.overview, 420),
+    summary: truncateText(leadText, 420),
     kind: 'overview',
     children: [],
   };
@@ -109,7 +131,7 @@ const buildSummaryMindMap = (summary, language = 'en') => {
   return {
     id: 'root',
     label: truncateText(summary.title, 56),
-    summary: truncateText(summary.overview, 420),
+    summary: truncateText(leadText, 420),
     kind: 'root',
     children: [overviewNode, clusterNode, takeawayNode],
   };
@@ -154,6 +176,9 @@ const getDocumentSummary = async (
   const response = await apiClient.post(`/rag/documents/${documentId}/summary`, {
     language,
     forceRefresh: Boolean(options.forceRefresh),
+    slot: options.slot,
+    instruction:
+      typeof options.instruction === "string" ? options.instruction : undefined,
   });
   return response.data;
 };

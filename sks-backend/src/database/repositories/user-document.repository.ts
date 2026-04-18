@@ -9,6 +9,16 @@ export class UserDocumentRepository extends BaseRepository<UserDocument> {
     super(ds, UserDocument);
   }
 
+  async findByUserAndDocument(
+    userId: string,
+    documentId: string,
+  ): Promise<UserDocument | null> {
+    return this.repository.findOne({
+      where: { user: { id: userId }, document: { id: documentId } },
+      relations: ['document'],
+    });
+  }
+
   async toggleFavorite(
     userId: string,
     documentId: string,

@@ -1,8 +1,16 @@
 const RECENT_DOCUMENTS_STORAGE_KEY = 'sks.recent-documents';
 const MAX_RECENT_DOCUMENTS = 20;
 
-const canUseStorage = () =>
-  typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+const canUseStorage = () => {
+  try {
+    return (
+      typeof window !== 'undefined' &&
+      typeof window.localStorage !== 'undefined'
+    );
+  } catch {
+    return false;
+  }
+};
 
 const parseRecentDocumentEntries = (value) => {
   if (!Array.isArray(value)) {
@@ -43,10 +51,14 @@ const saveRecentDocumentEntries = (entries) => {
     return;
   }
 
-  window.localStorage.setItem(
-    RECENT_DOCUMENTS_STORAGE_KEY,
-    JSON.stringify(entries.slice(0, MAX_RECENT_DOCUMENTS)),
-  );
+  try {
+    window.localStorage.setItem(
+      RECENT_DOCUMENTS_STORAGE_KEY,
+      JSON.stringify(entries.slice(0, MAX_RECENT_DOCUMENTS)),
+    );
+  } catch {
+    // Ignore browser storage failures and keep the dashboard usable.
+  }
 };
 
 const getRecentDocumentEntries = (limit = MAX_RECENT_DOCUMENTS) => {

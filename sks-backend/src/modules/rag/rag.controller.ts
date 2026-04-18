@@ -101,6 +101,8 @@ export class RagController {
       ownerId,
       body.language ?? 'en',
       body.forceRefresh ?? false,
+      body.instruction,
+      body.slot,
     );
 
     return {

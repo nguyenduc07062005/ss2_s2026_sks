@@ -1,6 +1,10 @@
 export const SUMMARY_LANGUAGES = ['vi', 'en'] as const;
+export const SUMMARY_VERSION_SLOTS = ['default', 'custom'] as const;
+export const SUMMARY_FORMATS = ['structured', 'narrative'] as const;
 
 export type SummaryLanguage = (typeof SUMMARY_LANGUAGES)[number];
+export type SummaryVersionSlot = (typeof SUMMARY_VERSION_SLOTS)[number];
+export type SummaryFormat = (typeof SUMMARY_FORMATS)[number];
 
 export type RagSource = {
   documentId: string;
@@ -29,6 +33,8 @@ export type StructuredDocumentSummary = {
   overview: string;
   key_points: string[];
   conclusion: string;
+  format?: SummaryFormat;
+  body?: string | null;
 };
 
 export type DocumentSummaryResponse = StructuredDocumentSummary & {
@@ -36,6 +42,10 @@ export type DocumentSummaryResponse = StructuredDocumentSummary & {
   generatedAt: string;
   sources: RagSource[];
   cached: boolean;
+  slot: SummaryVersionSlot;
+  instruction?: string | null;
+  activeSlot: SummaryVersionSlot;
+  versions: SummaryVersionResponse[];
 };
 
 export type SummaryArtifact = StructuredDocumentSummary & {
@@ -43,6 +53,17 @@ export type SummaryArtifact = StructuredDocumentSummary & {
   generatedAt: string;
   sources: RagSource[];
   version?: number;
+  slot: SummaryVersionSlot;
+  instruction?: string | null;
+};
+
+export type SummaryVersionResponse = SummaryArtifact & {
+  active: boolean;
+};
+
+export type SummaryLanguageCache = {
+  activeSlot?: SummaryVersionSlot;
+  versions?: Partial<Record<SummaryVersionSlot, SummaryArtifact>>;
 };
 
 export type MindMapNodeKind =
@@ -90,7 +111,9 @@ export type DocumentArtifactCache = {
     sources: RagSource[];
     generatedAt: string;
   };
-  summaryByLanguage?: Partial<Record<SummaryLanguage, SummaryArtifact>>;
+  summaryByLanguage?: Partial<
+    Record<SummaryLanguage, SummaryLanguageCache | SummaryArtifact>
+  >;
   mindMapByLanguage?: Partial<Record<SummaryLanguage, MindMapArtifact>>;
   diagram?: DiagramArtifact;
 };

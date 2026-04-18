@@ -1,5 +1,16 @@
 const TOKEN_KEY = 'token';
 
+const canUseStorage = () => {
+  try {
+    return (
+      typeof window !== 'undefined' &&
+      typeof window.localStorage !== 'undefined'
+    );
+  } catch {
+    return false;
+  }
+};
+
 const decodeBase64Url = (value) => {
   try {
     const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
@@ -27,15 +38,39 @@ const getTokenPayload = () => {
 };
 
 export const setToken = (token) => {
-  localStorage.setItem(TOKEN_KEY, token);
+  if (!canUseStorage()) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    // Ignore browser storage failures and fall back to unauthenticated mode.
+  }
 };
 
 export const getToken = () => {
-  return localStorage.getItem(TOKEN_KEY);
+  if (!canUseStorage()) {
+    return null;
+  }
+
+  try {
+    return window.localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
 };
 
 export const clearToken = () => {
-  localStorage.removeItem(TOKEN_KEY);
+  if (!canUseStorage()) {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // Ignore browser storage failures and keep the app responsive.
+  }
 };
 
 export const isAuthenticated = () => {

@@ -6,12 +6,19 @@ describe('RagSummaryService', () => {
     id: string;
     title: string;
   };
+
+  type OwnedUserDocument = {
+    id: string;
+    extraAttributes?: Record<string, unknown> | null;
+  };
+
   type RepresentativeChunk = {
     chunkIndex: number;
     chunkText: string;
     pageNumber: number;
     sectionTitle: string;
   };
+
   type StructuredSummaryInternals = {
     generateStructuredSummary: (...args: unknown[]) => Promise<unknown>;
     normalizeSummary: (
@@ -26,6 +33,12 @@ describe('RagSummaryService', () => {
     };
   };
 
+  const userDocumentRepository = {
+    findByUserAndDocument: jest.fn<
+      Promise<OwnedUserDocument | null>,
+      [string, string]
+    >(),
+  };
   const ragIndexingService = {
     ensureDocumentIndexed: jest.fn<Promise<void>, [string]>(),
   };
@@ -39,8 +52,14 @@ describe('RagSummaryService', () => {
     buildSources: jest.fn<unknown[], [string, string, RepresentativeChunk[]]>(),
   };
   const ragArtifactCacheService = {
-    getSummary: jest.fn<unknown, [OwnedDocument, 'en' | 'vi']>(),
-    saveSummary: jest.fn<Promise<void>, [OwnedDocument, unknown]>(),
+    getSummaryState: jest.fn<
+      unknown,
+      [OwnedUserDocument, 'en' | 'vi', OwnedDocument?]
+    >(),
+    saveSummary: jest.fn<
+      Promise<void>,
+      [OwnedUserDocument, unknown, OwnedDocument?]
+    >(),
   };
   const ragStructuredGenerationService = {
     generate: jest.fn<Promise<unknown>, [unknown]>(),
@@ -50,6 +69,10 @@ describe('RagSummaryService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    userDocumentRepository.findByUserAndDocument.mockResolvedValue({
+      id: 'user-doc-1',
+      extraAttributes: {},
+    });
     ragIndexingService.ensureDocumentIndexed.mockResolvedValue(undefined);
     ragDocumentContextService.ensureOwnedDocument.mockResolvedValue({
       id: 'doc-0',
@@ -58,47 +81,60 @@ describe('RagSummaryService', () => {
     ragDocumentContextService.getRepresentativeChunks.mockResolvedValue([]);
     ragDocumentContextService.buildSummaryContext.mockReturnValue('');
     ragDocumentContextService.buildSources.mockReturnValue([]);
-    ragArtifactCacheService.getSummary.mockReturnValue(null);
+    ragArtifactCacheService.getSummaryState.mockReturnValue(null);
     ragArtifactCacheService.saveSummary.mockResolvedValue(undefined);
     service = new RagSummaryService(
       ragIndexingService as never,
       ragDocumentContextService as never,
       ragArtifactCacheService as never,
       ragStructuredGenerationService as never,
+      userDocumentRepository as never,
     );
   });
 
-  it('reuses an existing cached summary even when it has no version', async () => {
+  it('reuses the active cached summary version without regenerating', async () => {
     const document = {
       id: 'doc-1',
       title: 'Debugging Notes',
     };
-    const cachedSummary = {
-      title: 'Existing summary',
-      overview: 'Stored overview.',
-      key_points: ['Stored point'],
-      conclusion: 'Stored conclusion.',
-      language: 'en' as const,
-      generatedAt: '2026-04-11T00:00:00.000Z',
-      sources: [],
+    const cachedSummaryState = {
+      activeSlot: 'default' as const,
+      versions: {
+        default: {
+          title: 'Existing summary',
+          overview: 'Stored overview.',
+          key_points: ['Stored point'],
+          conclusion: 'Stored conclusion.',
+          language: 'en' as const,
+          generatedAt: '2026-04-11T00:00:00.000Z',
+          sources: [],
+          slot: 'default' as const,
+          instruction: null,
+        },
+      },
     };
 
     ragDocumentContextService.ensureOwnedDocument.mockResolvedValue(document);
-    ragArtifactCacheService.getSummary.mockReturnValue(cachedSummary);
+    ragArtifactCacheService.getSummaryState.mockReturnValue(cachedSummaryState);
 
     const result = await service.generateSummary('doc-1', 'user-1', 'en');
 
-    expect(result).toEqual({
-      ...cachedSummary,
-      cached: true,
-    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        title: 'Existing summary',
+        slot: 'default',
+        activeSlot: 'default',
+        cached: true,
+      }),
+    );
+    expect(result.versions).toHaveLength(1);
     expect(
       ragDocumentContextService.getRepresentativeChunks,
     ).not.toHaveBeenCalled();
     expect(ragArtifactCacheService.saveSummary).not.toHaveBeenCalled();
   });
 
-  it('regenerates the summary when forceRefresh is true even if cache exists', async () => {
+  it('stores a custom summary without deleting the default one', async () => {
     const document = {
       id: 'doc-1',
       title: 'Debugging Notes',
@@ -111,18 +147,44 @@ describe('RagSummaryService', () => {
         sectionTitle: 'Introduction',
       },
     ];
-    const cachedSummary = {
-      title: 'Existing summary',
-      overview: 'Stored overview.',
-      key_points: ['Stored point'],
-      conclusion: 'Stored conclusion.',
-      language: 'en' as const,
-      generatedAt: '2026-04-11T00:00:00.000Z',
-      sources: [],
+    const cachedSummaryState = {
+      activeSlot: 'default' as const,
+      versions: {
+        default: {
+          title: 'Default summary',
+          overview: 'Stored overview.',
+          key_points: ['Stored point'],
+          conclusion: 'Stored conclusion.',
+          language: 'en' as const,
+          generatedAt: '2026-04-11T00:00:00.000Z',
+          sources: [],
+          slot: 'default' as const,
+          instruction: null,
+        },
+      },
+    };
+    const nextSummaryState = {
+      activeSlot: 'custom' as const,
+      versions: {
+        ...cachedSummaryState.versions,
+        custom: {
+          title: 'Custom summary',
+          overview: 'Custom overview.',
+          key_points: ['Custom point'],
+          conclusion: 'Custom conclusion.',
+          language: 'en' as const,
+          generatedAt: '2026-04-12T00:00:00.000Z',
+          sources: [],
+          slot: 'custom' as const,
+          instruction: 'Focus on debugging workflow.',
+        },
+      },
     };
 
     ragDocumentContextService.ensureOwnedDocument.mockResolvedValue(document);
-    ragArtifactCacheService.getSummary.mockReturnValue(cachedSummary);
+    ragArtifactCacheService.getSummaryState
+      .mockReturnValueOnce(cachedSummaryState)
+      .mockReturnValueOnce(nextSummaryState);
     ragDocumentContextService.getRepresentativeChunks.mockResolvedValue(
       representativeChunks,
     );
@@ -137,20 +199,36 @@ describe('RagSummaryService', () => {
         'generateStructuredSummary',
       )
       .mockResolvedValue({
-        title: 'Fresh summary',
-        overview: 'Fresh overview.',
-        key_points: ['Fresh point'],
-        conclusion: 'Fresh conclusion.',
+        title: 'Custom summary',
+        overview: 'Custom overview.',
+        key_points: ['Custom point'],
+        conclusion: 'Custom conclusion.',
       });
 
-    const result = await service.generateSummary('doc-1', 'user-1', 'en', true);
+    const result = await service.generateSummary(
+      'doc-1',
+      'user-1',
+      'en',
+      true,
+      'Focus on debugging workflow.',
+    );
 
     expect(result.cached).toBe(false);
-    expect(result.title).toBe('Fresh summary');
-    expect(
-      ragDocumentContextService.getRepresentativeChunks,
-    ).toHaveBeenCalled();
-    expect(ragArtifactCacheService.saveSummary).toHaveBeenCalled();
+    expect(result.slot).toBe('custom');
+    expect(result.activeSlot).toBe('custom');
+    expect(result.versions).toHaveLength(2);
+    expect(result.versions.map((item) => item.slot)).toEqual([
+      'default',
+      'custom',
+    ]);
+    expect(ragArtifactCacheService.saveSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'user-doc-1' }),
+      expect.objectContaining({
+        slot: 'custom',
+        instruction: 'Focus on debugging workflow.',
+      }),
+      expect.objectContaining({ id: 'doc-1' }),
+    );
   });
 
   it('rejects summary generation when the document has no indexed chunks', async () => {
@@ -158,7 +236,7 @@ describe('RagSummaryService', () => {
       id: 'doc-1',
       title: 'Debugging Notes',
     });
-    ragArtifactCacheService.getSummary.mockReturnValue(null);
+    ragArtifactCacheService.getSummaryState.mockReturnValue(null);
     ragIndexingService.ensureDocumentIndexed.mockResolvedValue(undefined);
     ragDocumentContextService.getRepresentativeChunks.mockResolvedValue([]);
 
@@ -183,9 +261,31 @@ describe('RagSummaryService', () => {
         sectionTitle: 'Introduction',
       },
     ];
+    const nextSummaryState = {
+      activeSlot: 'default' as const,
+      versions: {
+        default: {
+          title: 'Summary of Debugging Notes',
+          overview:
+            'The available context was not sufficient to extract a complete overview of the document.',
+          key_points: [
+            'The extracted context was not sufficient to recover all important points reliably.',
+          ],
+          conclusion:
+            'This summary reflects only the content that was successfully extracted.',
+          language: 'en' as const,
+          generatedAt: '2026-04-12T00:00:00.000Z',
+          sources: [],
+          slot: 'default' as const,
+          instruction: null,
+        },
+      },
+    };
 
     ragDocumentContextService.ensureOwnedDocument.mockResolvedValue(document);
-    ragArtifactCacheService.getSummary.mockReturnValue(null);
+    ragArtifactCacheService.getSummaryState
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(nextSummaryState);
     ragIndexingService.ensureDocumentIndexed.mockResolvedValue(undefined);
     ragDocumentContextService.getRepresentativeChunks.mockResolvedValue(
       representativeChunks,
@@ -215,12 +315,6 @@ describe('RagSummaryService', () => {
     ]);
     expect(result.conclusion).toBe(
       'This summary reflects only the content that was successfully extracted.',
-    );
-    expect(ragArtifactCacheService.saveSummary).toHaveBeenCalledWith(
-      document,
-      expect.objectContaining({
-        title: 'Summary of Debugging Notes',
-      }),
     );
   });
 

@@ -28,4 +28,7 @@ export class UserDocument extends BaseEntity {
 
   @Column({ name: 'is_favorite', default: false })
   isFavorite: boolean;
+
+  @Column({ name: 'extra_attributes', type: 'jsonb', nullable: true })
+  extraAttributes: Record<string, any> | null;
 }

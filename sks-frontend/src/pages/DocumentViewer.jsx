@@ -156,12 +156,151 @@ const ChatBubbleIcon = ({ className = "h-5 w-5" }) => (
   </svg>
 );
 
+const HistoryIcon = ({ className = "h-5 w-5" }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={className}
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M10 5.5v4l2.5 1.5M3.5 10a6.5 6.5 0 1 0 2.2-4.87M3.5 3.5v3.25h3.25"
+    />
+  </svg>
+);
+
+const ClockIcon = ({ className = "h-4 w-4" }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={className}
+  >
+    <circle cx="10" cy="10" r="6.75" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10 6.5v4l2.75 1.5" />
+  </svg>
+);
+
+const RestoreIcon = ({ className = "h-4 w-4" }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={className}
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M6 7.5H3v-3M3.5 7a6.5 6.5 0 1 1-1 3"
+    />
+  </svg>
+);
+
+const CheckCircleIcon = ({ className = "h-4 w-4" }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={className}
+  >
+    <circle cx="10" cy="10" r="6.75" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="m7.5 10 1.7 1.7 3.3-3.4" />
+  </svg>
+);
+
+const SummaryCardIcon = ({ className = "h-4 w-4" }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={className}
+  >
+    <rect x="4" y="3.5" width="12" height="13" rx="2.25" />
+    <path strokeLinecap="round" d="M7 7h6M7 10h6M7 13h4" />
+  </svg>
+);
+
 const AI_TABS = [
   { id: "summary", label: "Summary", Icon: SparklesIcon },
   { id: "mindmap", label: "Mind Map", Icon: MindMapIcon },
   { id: "ask", label: "Ask AI", Icon: ChatBubbleIcon },
   { id: "related", label: "Related", Icon: ExternalLinkIcon },
 ];
+
+const getSummaryVersions = (summaryData) =>
+  Array.isArray(summaryData?.versions) ? summaryData.versions : [];
+
+const resolveSummaryVersion = (summaryData, preferredSlot) => {
+  const versions = getSummaryVersions(summaryData);
+
+  if (preferredSlot) {
+    const preferredVersion = versions.find((item) => item.slot === preferredSlot);
+
+    if (preferredVersion) {
+      return preferredVersion;
+    }
+  }
+
+  const selectedVersion = versions.find((item) => item.slot === summaryData?.slot);
+
+  if (selectedVersion) {
+    return selectedVersion;
+  }
+
+  const activeVersion = versions.find(
+    (item) => item.slot === summaryData?.activeSlot,
+  );
+
+  if (activeVersion) {
+    return activeVersion;
+  }
+
+  return versions[0] || summaryData || null;
+};
+
+const getNarrativeSummaryBody = (summaryVersion) => {
+  if (
+    summaryVersion?.format === "narrative" &&
+    typeof summaryVersion?.body === "string" &&
+    summaryVersion.body.trim()
+  ) {
+    return summaryVersion.body.trim();
+  }
+
+  return "";
+};
+
+const formatSummaryHistoryTimestamp = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  const parsedDate = new Date(value);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "";
+  }
+
+  return parsedDate.toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
 const findMindMapNodeById = (node, targetId) => {
   if (!node || !targetId) {
@@ -303,8 +442,12 @@ const DocumentViewer = () => {
   });
   const [selectedLanguage, setSelectedLanguage] = useState("vi");
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [isSummaryHistoryOpen, setIsSummaryHistoryOpen] = useState(false);
   const [isSummaryRefreshConfirmOpen, setIsSummaryRefreshConfirmOpen] =
     useState(false);
+  const [summaryInstructionDraft, setSummaryInstructionDraft] = useState("");
+  const [summaryInstructionError, setSummaryInstructionError] = useState("");
+  const [selectedSummarySlot, setSelectedSummarySlot] = useState(null);
   const [isMindMapModalOpen, setIsMindMapModalOpen] = useState(false);
   const [isMindMapRefreshConfirmOpen, setIsMindMapRefreshConfirmOpen] =
     useState(false);
@@ -435,7 +578,11 @@ const DocumentViewer = () => {
     setActiveTab("summary");
     setSummaryState({ loading: false, error: "", data: null });
     setIsSummaryModalOpen(false);
+    setIsSummaryHistoryOpen(false);
     setIsSummaryRefreshConfirmOpen(false);
+    setSummaryInstructionDraft("");
+    setSummaryInstructionError("");
+    setSelectedSummarySlot(null);
     setIsMindMapModalOpen(false);
     setIsMindMapRefreshConfirmOpen(false);
     setMindMapState({ loading: false, error: "", data: null });
@@ -456,29 +603,67 @@ const DocumentViewer = () => {
   /* AI Logic */
   const loadSummary = useCallback(
     async (language = selectedLanguage, options = {}) => {
-      if (!documentId || summaryState.loading) return;
+      if (!documentId || summaryState.loading) return false;
       try {
         const targetLanguage = language || selectedLanguage;
         const forceRefresh = Boolean(options.forceRefresh);
+        const targetSlot = options.slot || undefined;
+        const instruction =
+          typeof options.instruction === "string" ? options.instruction : undefined;
         setSelectedLanguage(targetLanguage);
         setSummaryState((s) => ({ ...s, loading: true, error: "" }));
         const result = await getDocumentSummary(documentId, targetLanguage, {
           forceRefresh,
+          slot: targetSlot,
+          instruction,
         });
         setSummaryState({
           loading: false,
           error: "",
           data: result,
         });
+        setSelectedSummarySlot(
+          result.slot || result.activeSlot || targetSlot || null,
+        );
+        setSummaryInstructionError("");
+        if (forceRefresh) {
+          setSummaryInstructionDraft("");
+        }
+        return true;
       } catch (err) {
-        setSummaryState({
+        const errorMessage =
+          err.response?.data?.message || "AI could not summarize this.";
+        setSummaryState((current) => ({
           loading: false,
-          error: err.response?.data?.message || "AI could not summarize this.",
-          data: null,
-        });
+          error: current.data && options.forceRefresh ? "" : errorMessage,
+          data: current.data,
+        }));
+        if (options.forceRefresh) {
+          setSummaryInstructionError(
+            err.response?.data?.message || "AI could not create a custom summary.",
+          );
+        }
+        return false;
       }
     },
     [documentId, selectedLanguage, summaryState.loading],
+  );
+
+  const summaryVersions = useMemo(
+    () => getSummaryVersions(summaryState.data),
+    [summaryState.data],
+  );
+  const activeSummaryVersion = useMemo(
+    () => resolveSummaryVersion(summaryState.data, selectedSummarySlot),
+    [selectedSummarySlot, summaryState.data],
+  );
+  const defaultSummaryVersion = useMemo(
+    () => summaryVersions.find((item) => item.slot === "default") || null,
+    [summaryVersions],
+  );
+  const summaryHistoryVersions = useMemo(
+    () => summaryVersions.filter((item) => item.slot === "custom"),
+    [summaryVersions],
   );
 
   const loadMindMap = useCallback(
@@ -783,6 +968,17 @@ const DocumentViewer = () => {
     [mindMapState.data?.mindMap, loadMindMap],
   );
 
+  const handleSummarySlotChange = useCallback(
+    (slot) => {
+      if (!summaryVersions.some((item) => item.slot === slot)) {
+        return;
+      }
+
+      setSelectedSummarySlot(slot);
+    },
+    [summaryVersions],
+  );
+
   /* Tab Components */
   const renderSummary = () => {
     if (!summaryState.loading && !summaryState.data && !summaryState.error)
@@ -827,27 +1023,56 @@ const DocumentViewer = () => {
         </div>
       );
 
-    if (summaryState.loading)
+    if (summaryState.loading) {
       return (
-        <div className="space-y-6 animate-pulse px-2">
-          <Skeleton className="h-6 w-3/4" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-full opacity-70" />
-          <Skeleton className="h-4 w-5/6 opacity-50" />
-          <div className="pt-8 space-y-4">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
+        <div className="flex flex-col items-center justify-center py-20 animate-in fade-in duration-700">
+          <div className="relative mb-12 flex h-32 w-32 items-center justify-center">
+            {/* Outer rings */}
+            <div className="absolute inset-0 rounded-full border border-cyan-400/20 shadow-[0_0_20px_rgba(34,211,238,0.2)] animate-[spin_4s_linear_infinite]" />
+            <div className="absolute -inset-2 rounded-full border border-dashed border-blue-500/30 animate-[spin_6s_linear_infinite_reverse]" />
+            <div className="absolute -inset-4 rounded-full border border-cyan-300/10 animate-[spin_8s_linear_infinite]" />
+            
+            {/* Core Orb */}
+            <div className="absolute h-20 w-20 animate-pulse rounded-full bg-cyan-400/20 blur-xl" style={{ animationDuration: '2s' }} />
+            <div className="absolute h-16 w-16 animate-pulse rounded-full bg-blue-500/30 blur-lg" style={{ animationDuration: '1.5s', animationDirection: 'reverse' }} />
+            <div className="relative flex h-20 w-20 items-center justify-center rounded-[1.8rem] bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-[0_0_30px_rgba(6,182,212,0.4)]">
+              <SparklesIcon className="h-8 w-8 animate-pulse" />
+            </div>
+            {/* Scanning line */}
+            <div className="absolute top-0 bottom-0 left-1/2 w-16 -translate-x-1/2 overflow-hidden overflow-hidden rounded-full mix-blend-overlay">
+               <div className="absolute left-0 right-0 h-1 bg-white/60 blur-[1px] animate-[bounce_2s_infinite]" />
+            </div>
+          </div>
+          
+          <h3 className="text-[13px] font-[1000] text-slate-900 uppercase tracking-[0.3em] mb-3 animate-pulse">
+            Synthesizing Knowledge
+          </h3>
+          <p className="text-[12px] font-medium text-slate-400 max-w-[280px] text-center leading-relaxed mb-8">
+            AI is analyzing document structure and extracting key narrative concepts.
+          </p>
+          
+          {/* Progress Indication */}
+          <div className="flex w-56 flex-col gap-2.5">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full w-1/2 animate-[pulse_1.5s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 blur-[0.5px]" style={{ transformOrigin: 'left' }} />
+            </div>
+            <div className="flex justify-between px-1">
+              <span className="text-[9px] font-black uppercase tracking-widest text-cyan-600">Processing Data Elements</span>
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 animate-pulse">Please wait</span>
+            </div>
           </div>
         </div>
       );
+    }
 
     if (summaryState.error)
       return <InlineAlert tone="error">{summaryState.error}</InlineAlert>;
-    if (!summaryState.data) return null;
+    if (!summaryState.data || !activeSummaryVersion) return null;
 
-    const { title, overview, key_points, conclusion } = summaryState.data;
+    const { title, overview, key_points, conclusion } = activeSummaryVersion;
     const activeSummaryLanguage =
-      summaryState.data.language || selectedLanguage;
+      activeSummaryVersion.language || selectedLanguage;
+    const narrativeBody = getNarrativeSummaryBody(activeSummaryVersion);
 
     return (
       <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -884,10 +1109,23 @@ const DocumentViewer = () => {
             </div>
             <button
               type="button"
-              onClick={() => setIsSummaryRefreshConfirmOpen(true)}
-              className="rounded-xl bg-slate-100 px-3.5 py-2 text-[9px] font-[1000] uppercase tracking-[0.15em] text-slate-500 ring-1 ring-slate-200/40 transition-all hover:bg-white hover:text-cyan-600 hover:shadow-sks-soft"
-              title="Create a new summary for the current language"
+              onClick={() => setIsSummaryHistoryOpen(true)}
+              className="flex items-center gap-2 rounded-xl bg-slate-100 px-3.5 py-2 text-[9px] font-[1000] uppercase tracking-[0.15em] text-slate-500 ring-1 ring-slate-200/40 transition-all hover:bg-white hover:text-cyan-600 hover:shadow-sks-soft"
+              title="Open summary history"
             >
+              <HistoryIcon className="h-3.5 w-3.5" />
+              History
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSummaryInstructionError("");
+                setIsSummaryRefreshConfirmOpen(true);
+              }}
+              className="rounded-xl bg-slate-100 px-3.5 py-2 text-[9px] font-[1000] uppercase tracking-[0.15em] text-slate-500 ring-1 ring-slate-200/40 transition-all hover:bg-white hover:text-cyan-600 hover:shadow-sks-soft"
+              title="Create a custom summary for the current language"
+            >
+              <SparklesIcon className="mr-2 inline h-3.5 w-3.5" />
               New Summary
             </button>
             <button
@@ -908,45 +1146,55 @@ const DocumentViewer = () => {
             <div className="h-1.5 w-16 bg-cyan-500 rounded-full" />
           </div>
 
-          <section className="space-y-4">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">
-              Overview
-            </p>
-            <p className="text-[16px] leading-[1.8] font-medium text-slate-600">
-              {overview}
-            </p>
-          </section>
+          {narrativeBody ? (
+            <section className="rounded-[2.25rem] border border-slate-200/80 bg-white/90 p-7 shadow-sm">
+              <p className="text-[16px] leading-[1.95] font-medium text-slate-700">
+                {narrativeBody}
+              </p>
+            </section>
+          ) : (
+            <>
+              <section className="space-y-4">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                  Overview
+                </p>
+                <p className="text-[16px] leading-[1.8] font-medium text-slate-600">
+                  {overview}
+                </p>
+              </section>
 
-          <section className="space-y-6">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">
-              Key Findings
-            </p>
-            <div className="grid grid-cols-1 gap-5">
-              {key_points?.map((point, i) => (
-                <div key={i} className="flex gap-5 group">
-                  <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-[10px] font-black text-slate-400 ring-1 ring-slate-200 transition-all group-hover:bg-cyan-50 group-hover:text-cyan-600 group-hover:ring-cyan-200">
-                    {i + 1}
-                  </div>
-                  <p className="text-[15px] leading-relaxed font-bold text-slate-800">
-                    {point}
-                  </p>
+              <section className="space-y-6">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                  Key Findings
+                </p>
+                <div className="grid grid-cols-1 gap-5">
+                  {key_points?.map((point, i) => (
+                    <div key={i} className="flex gap-5 group">
+                      <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-[10px] font-black text-slate-400 ring-1 ring-slate-200 transition-all group-hover:bg-cyan-50 group-hover:text-cyan-600 group-hover:ring-cyan-200">
+                        {i + 1}
+                      </div>
+                      <p className="text-[15px] leading-relaxed font-bold text-slate-800">
+                        {point}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </section>
+              </section>
 
-          <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 text-white shadow-[0_30px_60px_-15px_rgba(15,23,42,0.4)] border border-white/10">
-            <div className="absolute top-0 right-0 p-8 opacity-10">
-              <SparklesIcon className="text-cyan-400 h-16 w-16" />
-            </div>
-            <div className="absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-cyan-500/20 blur-3xl opacity-30" />
-            <p className="relative z-10 text-[9px] font-black text-cyan-400 uppercase tracking-[0.4em] mb-4">
-              Conclusion
-            </p>
-            <p className="relative z-10 text-xl font-bold leading-relaxed italic text-slate-50 tracking-tight">
-              "{conclusion}"
-            </p>
-          </div>
+              <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 text-white shadow-[0_30px_60px_-15px_rgba(15,23,42,0.4)] border border-white/10">
+                <div className="absolute top-0 right-0 p-8 opacity-10">
+                  <SparklesIcon className="text-cyan-400 h-16 w-16" />
+                </div>
+                <div className="absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-cyan-500/20 blur-3xl opacity-30" />
+                <p className="relative z-10 text-[9px] font-black text-cyan-400 uppercase tracking-[0.4em] mb-4">
+                  Conclusion
+                </p>
+                <p className="relative z-10 text-xl font-bold leading-relaxed italic text-slate-50 tracking-tight">
+                  "{conclusion}"
+                </p>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -1145,10 +1393,45 @@ const DocumentViewer = () => {
 
     if (mindMapState.loading) {
       return (
-        <div className="space-y-4 animate-pulse">
-          <Skeleton className="h-36 w-full rounded-[28px]" />
-          <Skeleton className="h-[420px] w-full rounded-[30px]" />
-          <Skeleton className="h-32 w-full rounded-[24px]" />
+        <div className="flex flex-col items-center justify-center py-24 animate-in fade-in duration-700">
+          <div className="relative mb-10 flex h-36 w-36 items-center justify-center">
+            {/* Orbit paths */}
+            <div className="absolute inset-0 rounded-full border border-slate-200/60" />
+            <div className="absolute inset-6 rounded-full border border-slate-200/40" />
+            
+            {/* Orbiting nodes */}
+            <div className="absolute inset-0 animate-[spin_4s_linear_infinite]">
+              <div className="absolute -top-1.5 left-1/2 h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.8)]" />
+            </div>
+            <div className="absolute inset-6 animate-[spin_3s_linear_infinite_reverse]">
+              <div className="absolute -bottom-1.5 left-1/2 h-4 w-4 -translate-x-1/2 rounded-full bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.8)]" />
+            </div>
+            <div className="absolute inset-0 animate-[spin_5s_linear_infinite]">
+              <div className="absolute left-0 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-teal-400 shadow-[0_0_8px_rgba(45,212,191,0.8)]" />
+            </div>
+            <div className="absolute inset-6 animate-[spin_6s_linear_infinite]">
+              <div className="absolute right-0 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)]" />
+            </div>
+
+            {/* Core */}
+            <div className="absolute h-24 w-24 animate-pulse rounded-full bg-cyan-400/10 blur-xl" style={{ animationDuration: '2s' }} />
+            <div className="relative flex h-20 w-20 items-center justify-center rounded-[1.8rem] bg-white text-cyan-600 shadow-2xl shadow-cyan-500/15 ring-1 ring-cyan-100">
+              <MindMapIcon className="h-8 w-8" />
+            </div>
+          </div>
+          
+          <h3 className="text-[13px] font-[1000] text-slate-900 uppercase tracking-[0.3em] mb-3 animate-pulse">
+            Charting Knowledge Network
+          </h3>
+          <p className="text-[12px] font-medium text-slate-400 max-w-[280px] text-center leading-relaxed mb-6">
+            AI is mapping logical relationships and constructing the structural visualization matrix.
+          </p>
+          
+          <div className="mt-6 flex gap-2">
+            <div className="h-2.5 w-2.5 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+            <div className="h-2.5 w-2.5 rounded-full bg-cyan-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+            <div className="h-2.5 w-2.5 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+          </div>
         </div>
       );
     }
@@ -1748,8 +2031,9 @@ const DocumentViewer = () => {
   };
 
   const renderSummaryModal = () => {
-    if (!summaryState.data) return null;
-    const { title, overview, key_points, conclusion } = summaryState.data;
+    if (!summaryState.data || !activeSummaryVersion) return null;
+    const { title, overview, key_points, conclusion } = activeSummaryVersion;
+    const narrativeBody = getNarrativeSummaryBody(activeSummaryVersion);
 
     return (
       <div className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/40 p-6 backdrop-blur-md animate-in fade-in duration-500">
@@ -1772,8 +2056,8 @@ const DocumentViewer = () => {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-8 md:px-12 py-10 scrollbar-none">
-            <div className="space-y-12 mb-6">
+           <div className="flex-1 overflow-y-auto px-8 md:px-12 py-10 scrollbar-none">
+           <div className="space-y-12 mb-6">
               <div className="space-y-4">
                 <h1 className="text-3xl md:text-5xl font-[1000] text-slate-900 leading-[1.1] tracking-tight">
                   {title}
@@ -1781,45 +2065,241 @@ const DocumentViewer = () => {
                 <div className="h-1.5 w-20 bg-cyan-500 rounded-full" />
               </div>
 
-              <div className="space-y-4">
-                <p className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-400">
-                  Overview
-                </p>
-                <p className="text-[18px] leading-relaxed font-medium text-slate-600">
-                  {overview}
-                </p>
-              </div>
+              {narrativeBody ? (
+                <div className="rounded-[2rem] border border-slate-200/80 bg-white/95 p-7 shadow-sm">
+                  <p className="text-[18px] leading-[1.95] font-medium text-slate-700">
+                    {narrativeBody}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-4">
+                    <p className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-400">
+                      Overview
+                    </p>
+                    <p className="text-[18px] leading-relaxed font-medium text-slate-600">
+                      {overview}
+                    </p>
+                  </div>
 
-              <div className="space-y-8">
-                <p className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-400">
-                  Key Points
-                </p>
-                <div className="grid gap-6">
-                  {key_points?.map((point, i) => (
-                    <div key={i} className="flex gap-6 group">
-                      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-[11px] font-black text-slate-400 ring-1 ring-slate-200 transition-all group-hover:bg-cyan-500 group-hover:text-white group-hover:ring-0">
-                        {i + 1}
-                      </div>
-                      <p className="text-[17px] font-bold text-slate-800 leading-snug">
-                        {point}
-                      </p>
+                  <div className="space-y-8">
+                    <p className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-400">
+                      Key Points
+                    </p>
+                    <div className="grid gap-6">
+                      {key_points?.map((point, i) => (
+                        <div key={i} className="flex gap-6 group">
+                          <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-[11px] font-black text-slate-400 ring-1 ring-slate-200 transition-all group-hover:bg-cyan-500 group-hover:text-white group-hover:ring-0">
+                            {i + 1}
+                          </div>
+                          <p className="text-[17px] font-bold text-slate-800 leading-snug">
+                            {point}
+                          </p>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
 
-              <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 text-white shadow-xl border border-white/5">
-                <div className="absolute top-0 right-0 p-8 opacity-10">
-                  <SparklesIcon className="text-cyan-400 h-16 w-16" />
+                  <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 text-white shadow-xl border border-white/5">
+                    <div className="absolute top-0 right-0 p-8 opacity-10">
+                      <SparklesIcon className="text-cyan-400 h-16 w-16" />
+                    </div>
+                    <div className="absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-cyan-500/20 blur-3xl opacity-30" />
+                    <p className="relative z-10 text-[9px] font-black uppercase tracking-[0.4em] text-cyan-500 mb-6">
+                      Conclusion
+                    </p>
+                    <p className="relative z-10 text-xl font-bold italic leading-relaxed text-slate-50 tracking-tight">
+                      "{conclusion}"
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSummaryHistoryModal = () => {
+    if (!summaryState.data || !activeSummaryVersion) return null;
+
+    const activeSlot =
+      activeSummaryVersion.slot || selectedSummarySlot || "default";
+    const hasSummaryHistory = summaryHistoryVersions.length > 0;
+
+    const handleSelectSummaryVersion = (slot) => {
+      handleSummarySlotChange(slot);
+      setIsSummaryHistoryOpen(false);
+    };
+
+    return (
+      <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/45 p-5 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="w-full max-w-lg rounded-[2.5rem] border border-white/10 bg-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+          {/* Header Section */}
+          <div className="border-b border-slate-100 bg-white px-8 py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-600 shadow-sm ring-1 ring-cyan-100/50">
+                  <HistoryIcon className="h-5 w-5" />
                 </div>
-                <div className="absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-cyan-500/20 blur-3xl opacity-30" />
-                <p className="relative z-10 text-[9px] font-black uppercase tracking-[0.4em] text-cyan-500 mb-6">
-                  Conclusion
-                </p>
-                <p className="relative z-10 text-xl font-bold italic leading-relaxed text-slate-50 tracking-tight">
-                  "{conclusion}"
-                </p>
+                <div className="space-y-0.5">
+                  <h3 className="text-xl font-[1000] tracking-tight text-slate-900">
+                    Summary History
+                  </h3>
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+                    Manage different versions
+                  </p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsSummaryHistoryOpen(false)}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-slate-50 hover:text-slate-900"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          </div>
+
+          <div className="max-h-[65vh] overflow-y-auto p-8 scrollbar-none space-y-8">
+            {/* System Standard Section */}
+            <div className="space-y-4">
+              <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-400 pl-1">
+                AI Baseline
+              </h4>
+              <button
+                type="button"
+                onClick={() => handleSelectSummaryVersion("default")}
+                className={`group relative flex w-full items-center gap-5 rounded-[2rem] border p-5 text-left transition-all duration-300 overflow-hidden ${
+                  activeSlot === "default"
+                    ? "border-cyan-200 bg-cyan-50/40 shadow-sm"
+                    : "border-slate-100 bg-white hover:border-cyan-100 hover:bg-cyan-50/10"
+                }`}
+              >
+                {/* Active Marker Line */}
+                {activeSlot === "default" && (
+                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-cyan-500" />
+                )}
+
+                <div className="flex min-w-0 flex-1 items-center gap-4">
+                  <div
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
+                      activeSlot === "default"
+                        ? "bg-white text-cyan-600 shadow-sm ring-1 ring-cyan-100"
+                        : "bg-slate-50 text-slate-400 group-hover:bg-cyan-50 group-hover:text-cyan-600"
+                    }`}
+                  >
+                    <RestoreIcon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="truncate text-[15px] font-[1000] text-slate-900 group-hover:text-cyan-700 transition-colors">
+                        {defaultSummaryVersion?.title || "System Default Summary"}
+                      </span>
+                      {activeSlot === "default" && (
+                        <span className="flex h-5 items-center px-1.5 rounded-md bg-cyan-500 text-[8px] font-black uppercase tracking-widest text-white shadow-sm">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[12px] font-medium text-slate-400">
+                      Standard knowledge extraction by SKS AI
+                    </p>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            {/* Custom History Section */}
+            <div className="space-y-4">
+              <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-400 pl-1">
+                Custom Personalizations
+              </h4>
+              {hasSummaryHistory ? (
+                <div className="space-y-4">
+                  {summaryHistoryVersions.map((version, index) => {
+                    const isSelected = version.slot === activeSlot;
+                    const generatedLabel = formatSummaryHistoryTimestamp(
+                      version.generatedAt,
+                    );
+                    const promptText =
+                      typeof version.instruction === "string" &&
+                      version.instruction.trim()
+                        ? version.instruction.trim()
+                        : null;
+
+                    return (
+                      <button
+                        key={`${version.slot}-${index}`}
+                        type="button"
+                        onClick={() => handleSelectSummaryVersion(version.slot)}
+                        className={`group relative flex w-full flex-col gap-4 rounded-[2rem] border px-6 py-5 text-left transition-all duration-500 overflow-hidden ${
+                          isSelected
+                            ? "border-cyan-200 bg-cyan-50/40 shadow-md"
+                            : "border-slate-100 bg-white hover:border-cyan-100 hover:shadow-xl hover:shadow-cyan-500/5 hover:-translate-y-0.5"
+                        }`}
+                      >
+                        {/* Active Marker Line */}
+                        {isSelected && (
+                          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-cyan-500" />
+                        )}
+
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex min-w-0 flex-1 items-start gap-4">
+                            <div
+                              className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
+                                isSelected
+                                  ? "bg-white text-cyan-600 shadow-sm ring-1 ring-cyan-100"
+                                  : "bg-slate-50 text-slate-400 group-hover:bg-cyan-50 group-hover:text-cyan-600"
+                              }`}
+                            >
+                              <SummaryCardIcon className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <h5 className="truncate text-[15px] font-[1000] text-slate-900 group-hover:text-cyan-700 transition-colors">
+                                  {version.title || `Custom Iteration ${index + 1}`}
+                                </h5>
+                                {isSelected && (
+                                  <span className="flex h-5 items-center px-1.5 rounded-md bg-cyan-500 text-[8px] font-black uppercase tracking-widest text-white shadow-sm">
+                                    Active
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
+                                <ClockIcon className="h-3.5 w-3.5" />
+                                <span>{generatedLabel || "Recently generated"}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {promptText && (
+                          <div className="relative rounded-[1.25rem] bg-slate-50 px-4 py-3.5 ring-1 ring-slate-100/50">
+                            <div className="absolute left-0 top-4 bottom-4 w-1 rounded-full bg-slate-200" />
+                            <p className="line-clamp-2 text-[12px] font-medium leading-relaxed text-slate-600 pl-2">
+                              {promptText}
+                            </p>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center rounded-[2rem] border border-dashed border-slate-200 bg-slate-50/30 py-12 px-6 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-300 shadow-sm ring-1 ring-slate-100 mb-4">
+                    <HistoryIcon className="h-6 w-6" />
+                  </div>
+                  <h5 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-900 mb-1.5">
+                    History Empty
+                  </h5>
+                  <p className="text-[12px] font-medium text-slate-400 max-w-[180px] leading-relaxed">
+                    Personalized summaries will appear here once created.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1831,8 +2311,8 @@ const DocumentViewer = () => {
     if (!summaryState.data) return null;
 
     const activeSummaryLanguage =
-      summaryState.data.language || selectedLanguage;
-    const languageLabel = activeSummaryLanguage === "vi" ? "VI" : "EN";
+      activeSummaryVersion?.language || selectedLanguage;
+    const customExists = summaryHistoryVersions.length > 0;
 
     return (
       <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/50 p-5 backdrop-blur-md animate-in fade-in duration-300">
@@ -1840,29 +2320,58 @@ const DocumentViewer = () => {
           <div className="flex items-start justify-between gap-6">
             <div className="space-y-3">
               <p className="text-[9px] font-black uppercase tracking-[0.35em] text-slate-400">
-                Confirm Refresh
+                Custom Summary
               </p>
               <h3 className="text-2xl font-[1000] tracking-tight text-slate-900">
-                Create a new {languageLabel} summary?
+                {customExists
+                  ? "Replace the current custom summary"
+                  : "Create a new custom summary"}
               </h3>
-              <p className="text-[14px] leading-relaxed text-slate-600">
-                This will create a fresh summary and replace the current version
-                for the selected language.
-              </p>
             </div>
             <button
               type="button"
-              onClick={() => setIsSummaryRefreshConfirmOpen(false)}
+              onClick={() => {
+                setIsSummaryRefreshConfirmOpen(false);
+                setSummaryInstructionError("");
+              }}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-500"
             >
               <CloseIcon />
             </button>
           </div>
 
+          <div className="mt-6 space-y-3">
+            <label
+              htmlFor="summary-instruction"
+              className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500"
+            >
+              How should this summary be different?
+            </label>
+            <textarea
+              id="summary-instruction"
+              value={summaryInstructionDraft}
+              onChange={(event) => {
+                setSummaryInstructionDraft(event.target.value);
+                if (summaryInstructionError) {
+                  setSummaryInstructionError("");
+                }
+              }}
+              rows={5}
+              placeholder="Example: Focus on definitions and formulas only. Keep it concise and exam-oriented."
+              className="w-full resize-none rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] font-medium leading-6 text-slate-900 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:shadow-lg focus:shadow-cyan-500/10"
+            />
+            {summaryInstructionError ? (
+              <InlineAlert tone="error">{summaryInstructionError}</InlineAlert>
+            ) : null}
+          </div>
+
           <div className="mt-8 flex items-center justify-end gap-3">
             <button
               type="button"
-              onClick={() => setIsSummaryRefreshConfirmOpen(false)}
+              onClick={() => {
+                setIsSummaryRefreshConfirmOpen(false);
+                setSummaryInstructionError("");
+              }}
               className="rounded-2xl border border-slate-200 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-900"
             >
               Cancel
@@ -1870,12 +2379,33 @@ const DocumentViewer = () => {
             <button
               type="button"
               onClick={() => {
+                const trimmedInstruction = summaryInstructionDraft.trim();
+
+                if (!trimmedInstruction) {
+                  setSummaryInstructionError(
+                    "Please describe how the new summary should be generated.",
+                  );
+                  return;
+                }
+
+                setSummaryInstructionError("");
                 setIsSummaryRefreshConfirmOpen(false);
-                void loadSummary(activeSummaryLanguage, { forceRefresh: true });
+                void (async () => {
+                  const created = await loadSummary(activeSummaryLanguage, {
+                    forceRefresh: true,
+                    slot: "custom",
+                    instruction: trimmedInstruction,
+                  });
+
+                  if (!created) {
+                    setIsSummaryRefreshConfirmOpen(true);
+                  }
+                })();
               }}
+              disabled={summaryState.loading}
               className="rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 px-6 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-cyan-500/20 transition-all hover:scale-[1.02] active:scale-95"
             >
-              Confirm New Summary
+              {customExists ? "Replace Custom Summary" : "Create Custom Summary"}
             </button>
           </div>
         </div>
@@ -2119,6 +2649,7 @@ const DocumentViewer = () => {
       {/* ELITE SUMMARY MODAL */}
       {isMindMapModalOpen && renderMindMapModal()}
       {isSummaryModalOpen && renderSummaryModal()}
+      {isSummaryHistoryOpen && renderSummaryHistoryModal()}
       {isSummaryRefreshConfirmOpen && renderSummaryRefreshConfirmModal()}
       {isMindMapRefreshConfirmOpen && renderMindMapRefreshConfirmModal()}
     </div>

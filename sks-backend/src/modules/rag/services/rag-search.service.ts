@@ -15,6 +15,7 @@ const DEFAULT_SEARCH_LIMIT = 10;
 const DEFAULT_RELATED_LIMIT = 6;
 const SEMANTIC_SCORE_THRESHOLD = 0.58;
 const FALLBACK_TRIGGER_THRESHOLD = 0.72;
+const SEMANTIC_STRONG_MATCH_THRESHOLD = 0.78;
 const SOURCE_SNIPPET_LENGTH = 280;
 const SEARCH_SUCCESS_MESSAGE = 'Documents searched successfully';
 const SEARCH_CONCEPT_LIMIT = 4;
@@ -222,12 +223,15 @@ export class RagSearchService {
       semanticHits.map((document) => document.documentId),
     );
 
-    const semanticDocuments = await this.getRankedDocumentSummaries(
+    const rawSemanticDocuments = await this.getRankedDocumentSummaries(
       ownerId,
       semanticHits,
       'semantic',
       trimmedQuery,
       semanticInsightMap,
+    );
+    const semanticDocuments = rawSemanticDocuments.filter((document) =>
+      this.shouldKeepSemanticResult(document, trimmedQuery),
     );
 
     const shouldAppendFallback =
@@ -766,6 +770,74 @@ export class RagSearchService {
     };
   }
 
+  private shouldKeepSemanticResult(
+    document: SearchResultDocument,
+    query: string,
+  ): boolean {
+    if (document.matchType !== 'semantic') {
+      return true;
+    }
+
+    const score = document.score ?? 0;
+
+    if (score >= SEMANTIC_STRONG_MATCH_THRESHOLD) {
+      return true;
+    }
+
+    return this.hasLexicalEvidence(document, query);
+  }
+
+  private hasLexicalEvidence(
+    document: SearchResultDocument,
+    query: string,
+  ): boolean {
+    const normalizedQuery = this.normalizeComparisonText(query);
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const queryTokens = this.extractComparisonTokens(query);
+
+    if (queryTokens.length === 0) {
+      return true;
+    }
+
+    const sources = [
+      document.title,
+      document.matchSectionTitle,
+      document.matchSnippet,
+    ];
+    const requiredOverlap =
+      queryTokens.length === 1 ? 1 : Math.min(queryTokens.length, 2);
+
+    for (const source of sources) {
+      const normalizedSource = this.normalizeComparisonText(source ?? '');
+
+      if (!normalizedSource) {
+        continue;
+      }
+
+      if (normalizedSource.includes(normalizedQuery)) {
+        return true;
+      }
+
+      const sourceTokens = new Set(
+        normalizedSource.split(/\s+/).filter(Boolean),
+      );
+      const overlapCount = queryTokens.reduce(
+        (count, token) => count + (sourceTokens.has(token) ? 1 : 0),
+        0,
+      );
+
+      if (overlapCount >= requiredOverlap) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   private buildRelevanceLabel(
     matchType: SearchMatchType,
     score: number | null,
@@ -912,9 +984,7 @@ export class RagSearchService {
       return rankedConcepts;
     }
 
-    const fallbackQuery = this.cleanConceptPhrase(query);
-
-    return fallbackQuery ? [fallbackQuery] : [];
+    return [];
   }
 
   private extractTextConceptCandidates(text: string): string[] {
@@ -1128,6 +1198,24 @@ export class RagSearchService {
       .replace(/\s+/g, ' ')
       .replace(/[^\S\r\n]+/g, ' ')
       .trim();
+  }
+
+  private normalizeComparisonText(value: string): string {
+    return this.normalizeSearchText(value)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private extractComparisonTokens(value: string): string[] {
+    return this.normalizeComparisonText(value)
+      .split(/\s+/)
+      .filter((token) => token.length >= 2);
   }
 
   private readRequiredString(row: RawRow, key: string): string {
