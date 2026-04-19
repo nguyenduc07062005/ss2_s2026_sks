@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PromptTemplate } from '@langchain/core/prompts';
 import pgvector from 'pgvector';
 import { DataSource } from 'typeorm';
@@ -15,6 +15,9 @@ import {
 
 const DEFAULT_RETRIEVAL_LIMIT = 8;
 const SOURCE_SNIPPET_LENGTH = 280;
+const RECENT_ASK_HISTORY_TURNS = 4;
+const MAX_DOCUMENT_ASK_HISTORY_ITEMS = 6;
+const RECENT_ANSWER_CONTEXT_LENGTH = 280;
 
 const ANSWER_PROMPT = [
   'You are a helpful AI assistant inside a document workspace.',
@@ -24,10 +27,18 @@ const ANSWER_PROMPT = [
   'If the optional document context is not relevant, ignore it.',
   'If the user is clearly asking about the current document but the provided context is too weak, say that naturally without using formulaic refusal wording.',
   'Do not mention internal prompting, retrieval, or hidden context unless the user asks.',
+  'Format the answer in clean Markdown.',
+  'Use short paragraphs and bullet lists when they improve readability.',
+  'Bold only the most important keywords, concepts, formulas, and conclusions.',
+  'Do not over-format and do not use tables unless the user asks.',
   'Reply in the same language as the user question.',
+  'Use the recent conversation only to resolve follow-up references such as "that", "above", or "it".',
   'Current date in Asia/Saigon: {currentDate}.',
   'Current time in Asia/Saigon: {currentTime}.',
   'Workspace scope: {scopeLabel}.',
+  '',
+  'Recent conversation (oldest to newest, may be empty):',
+  '{recentConversation}',
   '',
   'Question:',
   '{question}',
@@ -55,6 +66,7 @@ type RawRow = Record<string, unknown>;
 @Injectable()
 export class RagQuestionAnsweringService {
   private readonly answerPrompt = PromptTemplate.fromTemplate(ANSWER_PROMPT);
+  private readonly logger = new Logger(RagQuestionAnsweringService.name);
 
   constructor(
     private readonly dataSource: DataSource,
@@ -80,6 +92,7 @@ export class RagQuestionAnsweringService {
       ownerId,
     );
     await this.ragIndexingService.ensureDocumentIndexed(documentId);
+    const recentHistory = await this.getRecentHistorySafe(documentId, ownerId);
 
     const result = await this.answerFromRelevantChunks(
       trimmedQuestion,
@@ -88,6 +101,7 @@ export class RagQuestionAnsweringService {
       {
         documentId,
         scopeLabel: `Document ${documentId}`,
+        recentHistory,
       },
     );
 
@@ -98,6 +112,7 @@ export class RagQuestionAnsweringService {
       answer: result.answer,
       sources: result.sources,
     });
+    await this.trimHistorySafe(documentId, ownerId);
 
     return {
       ...result,
@@ -113,13 +128,12 @@ export class RagQuestionAnsweringService {
       documentId,
       ownerId,
     );
-    const entries =
-      await this.documentAskHistoryRepository.findByUserAndDocument(
-        ownerId,
-        documentId,
-      );
+    await this.trimHistorySafe(documentId, ownerId);
+    const entries = await this.getRecentHistorySafe(documentId, ownerId, {
+      limit: MAX_DOCUMENT_ASK_HISTORY_ITEMS,
+    });
 
-    return entries.map((entry) => this.toAskHistoryItem(entry));
+    return entries.reverse().map((entry) => this.toAskHistoryItem(entry));
   }
 
   async clearDocumentAskHistory(
@@ -141,6 +155,7 @@ export class RagQuestionAnsweringService {
     question: string,
     chunks: RetrievedChunkRow[],
     scopeLabel: string,
+    recentHistory: DocumentAskHistory[],
   ): Promise<string> {
     const context =
       chunks.length > 0
@@ -155,6 +170,8 @@ export class RagQuestionAnsweringService {
             )
             .join('\n\n')
         : 'No relevant document context was retrieved for this question.';
+    const recentConversation =
+      this.buildRecentConversationContext(recentHistory);
     const now = new Date();
     const currentDate = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Saigon',
@@ -176,6 +193,7 @@ export class RagQuestionAnsweringService {
       scopeLabel,
       currentDate,
       currentTime,
+      recentConversation,
     });
     const answer = await this.geminiService.generateText(prompt);
 
@@ -190,6 +208,7 @@ export class RagQuestionAnsweringService {
       documentId?: string;
       limit?: number;
       scopeLabel: string;
+      recentHistory: DocumentAskHistory[];
     },
   ): Promise<RagAnswerResponse> {
     const retrievedChunks = await this.retrieveRelevantChunks(
@@ -206,6 +225,7 @@ export class RagQuestionAnsweringService {
       question,
       retrievedChunks,
       options.scopeLabel,
+      options.recentHistory,
     );
 
     return {
@@ -284,6 +304,39 @@ export class RagQuestionAnsweringService {
       sources: entry.sources ?? [],
       createdAt: entry.createdAt.toISOString(),
     };
+  }
+
+  private buildRecentConversationContext(
+    entries: DocumentAskHistory[],
+  ): string {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return 'No recent conversation.';
+    }
+
+    const conversationBlocks = [...entries]
+      .reverse()
+      .map((entry) => {
+        const normalizedQuestion = this.normalizeConversationText(
+          entry.question,
+        );
+        const normalizedAnswer = this.truncateConversationText(entry.answer);
+
+        if (!normalizedQuestion && !normalizedAnswer) {
+          return '';
+        }
+
+        return [
+          `User: ${normalizedQuestion || '(empty)'}`,
+          `Assistant: ${normalizedAnswer || '(empty)'}`,
+        ].join('\n');
+      })
+      .filter(Boolean);
+
+    if (conversationBlocks.length > 0) {
+      return conversationBlocks.join('\n\n');
+    }
+
+    return 'No recent conversation.';
   }
 
   private toVectorSql(embedding: number[]): string {
@@ -382,5 +435,85 @@ export class RagQuestionAnsweringService {
     }
 
     return null;
+  }
+
+  private truncateConversationText(value: unknown): string {
+    const normalizedValue = this.normalizeConversationText(value);
+
+    if (normalizedValue.length <= RECENT_ANSWER_CONTEXT_LENGTH) {
+      return normalizedValue;
+    }
+
+    const roughSlice = normalizedValue
+      .slice(0, RECENT_ANSWER_CONTEXT_LENGTH)
+      .trimEnd();
+    const lastWordBoundary = roughSlice.lastIndexOf(' ');
+    const safeSlice =
+      lastWordBoundary > Math.floor(RECENT_ANSWER_CONTEXT_LENGTH / 2)
+        ? roughSlice.slice(0, lastWordBoundary)
+        : roughSlice;
+
+    return `${safeSlice}...`;
+  }
+
+  private normalizeConversationText(value: unknown): string {
+    const rawValue =
+      typeof value === 'string'
+        ? value
+        : typeof value === 'number' ||
+            typeof value === 'boolean' ||
+            typeof value === 'bigint'
+          ? String(value)
+          : '';
+
+    return rawValue.replace(/\s+/g, ' ').trim();
+  }
+
+  private async getRecentHistorySafe(
+    documentId: string,
+    ownerId: string,
+    options: { limit?: number } = {},
+  ): Promise<DocumentAskHistory[]> {
+    const limit = options.limit ?? RECENT_ASK_HISTORY_TURNS;
+
+    try {
+      return await this.documentAskHistoryRepository.findRecentByUserAndDocument(
+        ownerId,
+        documentId,
+        limit,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Falling back to legacy ask history query for document ${documentId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      const legacyEntries =
+        await this.documentAskHistoryRepository.findByUserAndDocument(
+          ownerId,
+          documentId,
+        );
+
+      return legacyEntries.slice(-limit).reverse();
+    }
+  }
+
+  private async trimHistorySafe(
+    documentId: string,
+    ownerId: string,
+  ): Promise<void> {
+    try {
+      await this.documentAskHistoryRepository.trimToLatestByUserAndDocument(
+        ownerId,
+        documentId,
+        MAX_DOCUMENT_ASK_HISTORY_ITEMS,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Ask history trim failed for document ${documentId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 }

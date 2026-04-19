@@ -31,6 +31,14 @@ describe('RagSummaryService', () => {
       key_points: string[];
       conclusion: string;
     };
+    parseRawSummaryResponse: (rawResponse: string) => {
+      title: string;
+      overview: string;
+      key_points: string[];
+      conclusion: string;
+      format?: string;
+      body?: string | null;
+    };
   };
 
   const userDocumentRepository = {
@@ -339,5 +347,62 @@ describe('RagSummaryService', () => {
       'The extracted context was not sufficient to recover all important points reliably.',
     ]);
     expect(normalized.conclusion).toBe('Kept conclusion.');
+  });
+
+  it('repairs malformed raw Gemini JSON before parsing the summary payload', () => {
+    const parsed = (
+      service as unknown as StructuredSummaryInternals
+    ).parseRawSummaryResponse(`\`\`\`json
+{
+  "format": "structured",
+  "title": "Debugging Notes",
+  "body": "",
+  "overview": "Overview text",
+  "key_points": ["Point one", "Point two" "Point three"],
+  "conclusion": "Conclusion text"
+}
+\`\`\``);
+
+    expect(parsed).toEqual(
+      expect.objectContaining({
+        title: 'Debugging Notes',
+        overview: 'Overview text',
+        key_points: ['Point one', 'Point two', 'Point three'],
+        conclusion: 'Conclusion text',
+      }),
+    );
+  });
+
+  it('generates summaries in raw-only mode for better stability with Gemini', async () => {
+    ragStructuredGenerationService.generate.mockResolvedValue({
+      title: 'Debugging Notes',
+      overview: 'Overview text',
+      key_points: ['Point one'],
+      conclusion: 'Conclusion text',
+    });
+
+    const result = await (
+      service as unknown as StructuredSummaryInternals
+    ).generateStructuredSummary({
+      documentTitle: 'Debugging Notes',
+      context: 'Relevant context',
+      languageName: 'English',
+      instructionBlock: '',
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        title: 'Debugging Notes',
+        overview: 'Overview text',
+        key_points: ['Point one'],
+        conclusion: 'Conclusion text',
+      }),
+    );
+    expect(ragStructuredGenerationService.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skipJsonSchema: true,
+        skipFunctionCalling: true,
+      }),
+    );
   });
 });

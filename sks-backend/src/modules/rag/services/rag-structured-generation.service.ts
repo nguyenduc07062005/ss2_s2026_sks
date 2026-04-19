@@ -10,6 +10,8 @@ type StructuredGenerationOptions<TResult> = {
   outputSchema: object;
   schemaName: string;
   operationLabel: string;
+  skipJsonSchema?: boolean;
+  skipFunctionCalling?: boolean;
   modelOptions?: Omit<Partial<ChatGoogleParams>, 'apiKey'> & { model?: string };
   coerce: (value: unknown) => TResult | null;
   parseRawResponse: (rawResponse: string) => TResult;
@@ -27,6 +29,8 @@ export class RagStructuredGenerationService {
     outputSchema,
     schemaName,
     operationLabel,
+    skipJsonSchema,
+    skipFunctionCalling,
     modelOptions,
     coerce,
     parseRawResponse,
@@ -34,57 +38,61 @@ export class RagStructuredGenerationService {
   }: StructuredGenerationOptions<TResult>): Promise<TResult> {
     const baseModel = this.geminiService.createChatModel(modelOptions);
 
-    try {
-      const structuredPayload = coerce(
-        await prompt
-          .pipe(
-            baseModel.withStructuredOutput(outputSchema, {
-              method: 'jsonSchema',
-            }),
-          )
-          .invoke(input),
-      );
+    if (!skipJsonSchema) {
+      try {
+        const structuredPayload = coerce(
+          await prompt
+            .pipe(
+              baseModel.withStructuredOutput(outputSchema, {
+                method: 'jsonSchema',
+              }),
+            )
+            .invoke(input),
+        );
 
-      if (structuredPayload) {
-        return structuredPayload;
+        if (structuredPayload) {
+          return structuredPayload;
+        }
+
+        logger?.warn(
+          `${operationLabel} with JSON schema returned an empty structured payload. Falling back to function calling.`,
+        );
+      } catch (jsonSchemaError) {
+        logger?.warn(
+          `${operationLabel} fell back to function calling: ${this.toErrorMessage(
+            jsonSchemaError,
+          )}`,
+        );
       }
-
-      logger?.warn(
-        `${operationLabel} with JSON schema returned an empty structured payload. Falling back to function calling.`,
-      );
-    } catch (jsonSchemaError) {
-      logger?.warn(
-        `${operationLabel} fell back to function calling: ${this.toErrorMessage(
-          jsonSchemaError,
-        )}`,
-      );
     }
 
-    try {
-      const structuredPayload = coerce(
-        await prompt
-          .pipe(
-            baseModel.withStructuredOutput(outputSchema, {
-              method: 'functionCalling',
-              name: schemaName,
-            }),
-          )
-          .invoke(input),
-      );
+    if (!skipFunctionCalling) {
+      try {
+        const structuredPayload = coerce(
+          await prompt
+            .pipe(
+              baseModel.withStructuredOutput(outputSchema, {
+                method: 'functionCalling',
+                name: schemaName,
+              }),
+            )
+            .invoke(input),
+        );
 
-      if (structuredPayload) {
-        return structuredPayload;
+        if (structuredPayload) {
+          return structuredPayload;
+        }
+
+        logger?.warn(
+          `${operationLabel} with function calling returned an empty structured payload. Falling back to raw Gemini JSON mode.`,
+        );
+      } catch (functionCallingError) {
+        logger?.warn(
+          `${operationLabel} fell back to raw Gemini JSON mode: ${this.toErrorMessage(
+            functionCallingError,
+          )}`,
+        );
       }
-
-      logger?.warn(
-        `${operationLabel} with function calling returned an empty structured payload. Falling back to raw Gemini JSON mode.`,
-      );
-    } catch (functionCallingError) {
-      logger?.warn(
-        `${operationLabel} fell back to raw Gemini JSON mode: ${this.toErrorMessage(
-          functionCallingError,
-        )}`,
-      );
     }
 
     const rawPrompt = await fallbackPrompt.format(input);

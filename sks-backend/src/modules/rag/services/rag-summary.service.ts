@@ -21,6 +21,7 @@ import { RagArtifactCacheService } from './rag-artifact-cache.service';
 import { RagDocumentContextService } from './rag-document-context.service';
 import { RagIndexingService } from './rag-indexing.service';
 import { RagStructuredGenerationService } from './rag-structured-generation.service';
+import { parseJsonWithRepair } from '../utils/llm-json';
 
 const MAX_SUMMARY_CONTEXT_CHUNKS = 18;
 const SUMMARY_ARTIFACT_VERSION = 3;
@@ -34,6 +35,7 @@ const SUMMARY_PROMPT_TEMPLATE = [
   'Optimize for study value and fidelity to the source text.',
   'Prefer concrete concepts, definitions, workflows, comparisons, mechanisms, and examples from the document.',
   'Avoid generic filler, vague praise, and meta commentary.',
+  'Do not use Markdown syntax such as **bold**, headings, blockquotes, or code fences inside JSON string fields.',
   'Follow any user instruction only as a lens for emphasis, structure, or depth.',
   'If the user explicitly asks for one paragraph, no bullet points, or no section headings, choose format "narrative".',
   'Otherwise choose format "structured".',
@@ -59,6 +61,7 @@ const SUMMARY_JSON_FALLBACK_PROMPT_TEMPLATE = [
   'Summarize the document using ONLY the provided context.',
   'Do not add facts that are not present in the context.',
   'Optimize for study value and fidelity to the source text.',
+  'Do not use Markdown syntax such as **bold**, headings, blockquotes, or code fences inside JSON string fields.',
   'Follow any user instruction only as a lens for emphasis, structure, or depth.',
   'If the user explicitly asks for one paragraph, no bullet points, or no section headings, choose format "narrative". Otherwise choose format "structured".',
   'Return ONLY valid JSON with this exact structure:',
@@ -286,6 +289,8 @@ export class RagSummaryService {
         outputSchema: SUMMARY_OUTPUT_SCHEMA,
         schemaName: 'document_summary',
         operationLabel: 'Summary generation',
+        skipJsonSchema: true,
+        skipFunctionCalling: true,
         modelOptions: {
           temperature: 0.2,
           maxOutputTokens: 1400,
@@ -482,15 +487,9 @@ export class RagSummaryService {
   private parseRawSummaryResponse(
     rawResponse: string,
   ): StructuredDocumentSummary {
-    const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-
-    if (!jsonMatch) {
-      throw new Error('Raw Gemini fallback did not return JSON.');
-    }
-
-    const parsed = JSON.parse(
-      jsonMatch[0],
-    ) as Partial<StructuredDocumentSummary>;
+    const parsed = parseJsonWithRepair<Partial<StructuredDocumentSummary>>(
+      rawResponse,
+    );
 
     const structuredSummary = this.coerceStructuredSummary({
       format: typeof parsed.format === 'string' ? parsed.format : 'structured',

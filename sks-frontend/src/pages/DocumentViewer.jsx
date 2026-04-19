@@ -1,4 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDocViewer } from "../context/DocViewerContext.jsx";
 import { getFilePresentation } from "../components/workspace/DocumentLibraryPanel.jsx";
@@ -20,6 +22,172 @@ import {
 } from "../service/ragAPI.js";
 
 const MindMapCanvas = lazy(() => import("../components/documents/MindMapCanvas.jsx"));
+
+const askMarkdownComponents = {
+  p: ({ children }) => (
+    <p className="mb-3 text-[14px] font-medium leading-[1.8] text-slate-700 last:mb-0">
+      {children}
+    </p>
+  ),
+  ul: ({ children }) => (
+    <ul className="mb-3 list-disc space-y-2 pl-5 text-[14px] font-medium leading-[1.8] text-slate-700 last:mb-0">
+      {children}
+    </ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="mb-3 list-decimal space-y-2 pl-5 text-[14px] font-medium leading-[1.8] text-slate-700 last:mb-0">
+      {children}
+    </ol>
+  ),
+  li: ({ children }) => <li className="pl-1 marker:text-cyan-500">{children}</li>,
+  strong: ({ children }) => (
+    <strong className="font-black text-slate-900">{children}</strong>
+  ),
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="font-bold text-cyan-600 underline decoration-cyan-200 underline-offset-4 transition-colors hover:text-cyan-700"
+    >
+      {children}
+    </a>
+  ),
+  blockquote: ({ children }) => (
+    <blockquote className="mb-3 rounded-2xl border-l-4 border-cyan-400 bg-cyan-50/60 px-4 py-3 text-[14px] font-medium leading-[1.8] text-slate-700 last:mb-0">
+      {children}
+    </blockquote>
+  ),
+  code: ({ inline, children }) =>
+    inline ? (
+      <code className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[12px] font-semibold text-slate-800">
+        {children}
+      </code>
+    ) : (
+      <code className="font-mono text-[12px] text-slate-100">{children}</code>
+    ),
+  pre: ({ children }) => (
+    <pre className="mb-3 overflow-x-auto rounded-2xl bg-slate-900 px-4 py-3 text-[12px] leading-6 text-slate-100 last:mb-0">
+      {children}
+    </pre>
+  ),
+  h1: ({ children }) => (
+    <h1 className="mb-3 text-[18px] font-black leading-tight text-slate-950 last:mb-0">
+      {children}
+    </h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="mb-3 text-[16px] font-black leading-tight text-slate-950 last:mb-0">
+      {children}
+    </h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="mb-3 text-[15px] font-black leading-tight text-slate-900 last:mb-0">
+      {children}
+    </h3>
+  ),
+};
+
+const createMarkdownComponents = ({
+  paragraphClass,
+  listClass = paragraphClass,
+  strongClass = "font-black text-slate-900",
+  linkClass = "font-bold text-cyan-600 underline decoration-cyan-200 underline-offset-4 transition-colors hover:text-cyan-700",
+  inlineCodeClass = "rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[12px] font-semibold text-slate-800",
+  preClass = "mb-3 overflow-x-auto rounded-2xl bg-slate-900 px-4 py-3 text-[12px] leading-6 text-slate-100 last:mb-0",
+  blockquoteClass,
+} = {}) => ({
+  p: ({ children }) => (
+    <p className={`mb-3 ${paragraphClass} last:mb-0`}>{children}</p>
+  ),
+  ul: ({ children }) => (
+    <ul className={`mb-3 list-disc space-y-2 pl-5 ${listClass} last:mb-0`}>
+      {children}
+    </ul>
+  ),
+  ol: ({ children }) => (
+    <ol className={`mb-3 list-decimal space-y-2 pl-5 ${listClass} last:mb-0`}>
+      {children}
+    </ol>
+  ),
+  li: ({ children }) => <li className="pl-1 marker:text-cyan-500">{children}</li>,
+  strong: ({ children }) => (
+    <strong className={strongClass}>{children}</strong>
+  ),
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className={linkClass}
+    >
+      {children}
+    </a>
+  ),
+  blockquote: ({ children }) => (
+    <blockquote
+      className={
+        blockquoteClass ||
+        `mb-3 rounded-2xl border-l-4 border-cyan-400 bg-cyan-50/60 px-4 py-3 ${paragraphClass} last:mb-0`
+      }
+    >
+      {children}
+    </blockquote>
+  ),
+  code: ({ inline, children }) =>
+    inline ? (
+      <code className={inlineCodeClass}>{children}</code>
+    ) : (
+      <code className="font-mono text-[12px] text-inherit">{children}</code>
+    ),
+  pre: ({ children }) => <pre className={preClass}>{children}</pre>,
+});
+
+const summaryNarrativeMarkdownComponents = createMarkdownComponents({
+  paragraphClass: "text-[16px] font-medium leading-[1.95] text-slate-700",
+  listClass: "text-[16px] font-medium leading-[1.95] text-slate-700",
+});
+
+const summaryOverviewMarkdownComponents = createMarkdownComponents({
+  paragraphClass: "text-[16px] font-medium leading-[1.8] text-slate-600",
+  listClass: "text-[16px] font-medium leading-[1.8] text-slate-600",
+});
+
+const summaryKeyPointMarkdownComponents = createMarkdownComponents({
+  paragraphClass: "text-[15px] font-bold leading-relaxed text-slate-800",
+  listClass: "text-[15px] font-bold leading-relaxed text-slate-800",
+  strongClass: "font-black text-slate-950",
+});
+
+const summaryConclusionMarkdownComponents = createMarkdownComponents({
+  paragraphClass: "text-xl font-bold italic leading-relaxed tracking-tight text-slate-50",
+  listClass: "text-xl font-bold italic leading-relaxed tracking-tight text-slate-50",
+  strongClass: "font-black text-white",
+  linkClass:
+    "font-bold text-cyan-300 underline decoration-cyan-300/60 underline-offset-4 transition-colors hover:text-cyan-200",
+  inlineCodeClass:
+    "rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[12px] font-semibold text-white",
+  preClass:
+    "mb-3 overflow-x-auto rounded-2xl bg-slate-950/70 px-4 py-3 text-[12px] leading-6 text-slate-100 last:mb-0",
+  blockquoteClass:
+    "mb-3 rounded-2xl border-l-4 border-cyan-300/80 bg-white/10 px-4 py-3 text-xl font-bold italic leading-relaxed tracking-tight text-slate-50 last:mb-0",
+});
+
+const summaryModalNarrativeMarkdownComponents = createMarkdownComponents({
+  paragraphClass: "text-[18px] font-medium leading-[1.95] text-slate-700",
+  listClass: "text-[18px] font-medium leading-[1.95] text-slate-700",
+});
+
+const summaryModalOverviewMarkdownComponents = createMarkdownComponents({
+  paragraphClass: "text-[18px] font-medium leading-relaxed text-slate-600",
+  listClass: "text-[18px] font-medium leading-relaxed text-slate-600",
+});
+
+const summaryModalKeyPointMarkdownComponents = createMarkdownComponents({
+  paragraphClass: "text-[17px] font-bold leading-snug text-slate-800",
+  listClass: "text-[17px] font-bold leading-snug text-slate-800",
+  strongClass: "font-black text-slate-950",
+});
 
 /* Icons */
 const ArrowLeftIcon = () => (
@@ -353,6 +521,34 @@ const isMindMapNodeVisible = (
       rootId,
     ),
   );
+};
+
+const collectMindMapExpandedIds = (node, maxExpandableDepth = 1) => {
+  if (!node) {
+    return [];
+  }
+
+  const expandedIds = new Set();
+
+  const visit = (currentNode, depth) => {
+    if (!currentNode || depth > maxExpandableDepth) {
+      return;
+    }
+
+    if (depth === 0 || (currentNode.children || []).length > 0) {
+      expandedIds.add(currentNode.id);
+    }
+
+    if (depth === maxExpandableDepth) {
+      return;
+    }
+
+    (currentNode.children || []).forEach((child) => visit(child, depth + 1));
+  };
+
+  visit(node, 0);
+
+  return Array.from(expandedIds);
 };
 
 const CloseIcon = () => (
@@ -689,9 +885,19 @@ const DocumentViewer = () => {
           },
         });
         const rootId = result.mindMap?.id || "root";
+        const defaultExpandedIds = collectMindMapExpandedIds(
+          result.mindMap,
+          1,
+        );
         setSelectedMindMapNodeId(rootId);
         setMindMapViewMode("explore");
-        setExpandedMindMapNodeIds(rootId ? [rootId] : []);
+        setExpandedMindMapNodeIds(
+          defaultExpandedIds.length > 0
+            ? defaultExpandedIds
+            : rootId
+              ? [rootId]
+              : [],
+        );
       } catch (err) {
         setMindMapState({
           loading: false,
@@ -835,7 +1041,7 @@ const DocumentViewer = () => {
       const result = await askDocument(documentId, trimmedQuestion);
       setAskHistoryState((current) => ({
         ...current,
-        items: [...current.items, result.historyItem],
+        items: [...current.items, result.historyItem].slice(-6),
         loaded: true,
         error: "",
       }));
@@ -926,12 +1132,12 @@ const DocumentViewer = () => {
         const nextExpandedIds =
           expandedMindMapNodeIds.length > 0
             ? expandedMindMapNodeIds
-            : rootMindMapId
-              ? [rootMindMapId]
-              : [];
+            : collectMindMapExpandedIds(mindMapState.data?.mindMap, 1);
 
         if (expandedMindMapNodeIds.length === 0 && rootMindMapId) {
-          setExpandedMindMapNodeIds(nextExpandedIds);
+          setExpandedMindMapNodeIds(
+            nextExpandedIds.length > 0 ? nextExpandedIds : [rootMindMapId],
+          );
         }
 
         if (
@@ -1148,9 +1354,12 @@ const DocumentViewer = () => {
 
           {narrativeBody ? (
             <section className="rounded-[2.25rem] border border-slate-200/80 bg-white/90 p-7 shadow-sm">
-              <p className="text-[16px] leading-[1.95] font-medium text-slate-700">
-                {narrativeBody}
-              </p>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={summaryNarrativeMarkdownComponents}
+              >
+                {narrativeBody || ""}
+              </ReactMarkdown>
             </section>
           ) : (
             <>
@@ -1158,9 +1367,12 @@ const DocumentViewer = () => {
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">
                   Overview
                 </p>
-                <p className="text-[16px] leading-[1.8] font-medium text-slate-600">
-                  {overview}
-                </p>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={summaryOverviewMarkdownComponents}
+                >
+                  {overview || ""}
+                </ReactMarkdown>
               </section>
 
               <section className="space-y-6">
@@ -1173,9 +1385,14 @@ const DocumentViewer = () => {
                       <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-[10px] font-black text-slate-400 ring-1 ring-slate-200 transition-all group-hover:bg-cyan-50 group-hover:text-cyan-600 group-hover:ring-cyan-200">
                         {i + 1}
                       </div>
-                      <p className="text-[15px] leading-relaxed font-bold text-slate-800">
-                        {point}
-                      </p>
+                      <div className="min-w-0 flex-1">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={summaryKeyPointMarkdownComponents}
+                        >
+                          {point || ""}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1189,9 +1406,14 @@ const DocumentViewer = () => {
                 <p className="relative z-10 text-[9px] font-black text-cyan-400 uppercase tracking-[0.4em] mb-4">
                   Conclusion
                 </p>
-                <p className="relative z-10 text-xl font-bold leading-relaxed italic text-slate-50 tracking-tight">
-                  "{conclusion}"
-                </p>
+                <div className="relative z-10">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={summaryConclusionMarkdownComponents}
+                  >
+                    {conclusion || ""}
+                  </ReactMarkdown>
+                </div>
               </div>
             </>
           )}
@@ -1220,9 +1442,9 @@ const DocumentViewer = () => {
     const isCanvasOverlay = mode === "canvas";
     const isCompact = mode === "compact";
     const containerClass = isFloating
-      ? "pointer-events-auto flex h-full w-[400px] max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-[30px] border border-slate-200/80 bg-white/96 shadow-[0_36px_90px_-44px_rgba(15,23,42,0.42)] backdrop-blur-xl"
+      ? "pointer-events-auto flex h-full w-[400px] max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-[32px] border border-white/60 bg-white/75 shadow-[0_0_80px_-20px_rgba(34,211,238,0.15),0_30px_60px_-30px_rgba(15,23,42,0.3)] backdrop-blur-3xl ring-1 ring-slate-900/5 transition-all duration-300 animate-in slide-in-from-right-8 fade-in"
       : isCanvasOverlay
-        ? "pointer-events-auto flex max-h-[min(62vh,540px)] w-full max-w-[440px] flex-col overflow-hidden rounded-[26px] border border-slate-200/80 bg-white/96 shadow-[0_28px_80px_-40px_rgba(15,23,42,0.34)] backdrop-blur-xl"
+        ? "pointer-events-auto flex max-h-[min(62vh,540px)] w-full max-w-[440px] flex-col overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_28px_80px_-40px_rgba(15,23,42,0.34)] backdrop-blur-3xl ring-1 ring-slate-900/5 transition-all duration-300 animate-in slide-in-from-bottom-6 fade-in"
         : "pointer-events-auto flex max-h-[320px] w-[320px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[22px] border border-slate-200/80 bg-white/96 shadow-[0_24px_60px_-36px_rgba(15,23,42,0.34)] backdrop-blur-xl";
     const childPreviewLimit = isCompact ? 3 : 6;
     const childPreviewNodes =
@@ -1251,7 +1473,7 @@ const DocumentViewer = () => {
     return (
       <div className={containerClass}>
         <div
-          className={`flex items-start justify-between border-b border-slate-100 ${isCompact ? "gap-3 px-4 py-3" : "gap-4 px-5 py-4"}`}
+          className={`flex items-start justify-between border-b border-slate-100 ${isCompact ? "gap-3 px-4 py-3" : "gap-4 px-6 py-5 bg-white/40"}`}
         >
           <div className="min-w-0">
             <p
@@ -1659,9 +1881,14 @@ const DocumentViewer = () => {
                     </span>
                   </div>
                   <div className="rounded-[1.25rem] rounded-tl-sm border border-slate-100 bg-white px-5 py-4 shadow-sm">
-                    <p className="whitespace-pre-wrap text-[14px] leading-[1.8] font-medium text-slate-700">
-                      {item.answer}
-                    </p>
+                    <div className="min-w-0">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={askMarkdownComponents}
+                      >
+                        {item.answer || ""}
+                      </ReactMarkdown>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1873,13 +2100,23 @@ const DocumentViewer = () => {
               </div>
 
               <button
-                type="button"
-                onClick={() => setIsMindMapRefreshConfirmOpen(true)}
-                className="flex h-8 items-center gap-2 rounded-xl bg-slate-100 px-4 text-[9px] font-black uppercase tracking-widest text-slate-600 ring-1 ring-slate-200/40 transition-all hover:bg-white hover:text-cyan-600 hover:shadow-sm"
-              >
-                <SparklesIcon />
-                <span className="hidden sm:inline">Regenerate</span>
-              </button>
+    type="button"
+    disabled={mindMapState.loading}
+    onClick={() => setIsMindMapRefreshConfirmOpen(true)}
+    className={`flex h-8 items-center gap-2 rounded-xl px-4 text-[9px] font-black uppercase tracking-widest transition-all ${mindMapState.loading ? "bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100 ring-0" : "bg-slate-100 text-slate-600 ring-1 ring-slate-200/40 hover:bg-white hover:text-cyan-600 hover:shadow-sm"}`}
+  >
+    {mindMapState.loading ? (
+      <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+      </svg>
+    ) : (
+      <SparklesIcon className="h-3.5 w-3.5" />
+    )}
+    <span className="hidden sm:inline">
+      {mindMapState.loading ? "Generating..." : "Regenerate"}
+    </span>
+  </button>
 
               <button
                 type="button"
@@ -1893,6 +2130,25 @@ const DocumentViewer = () => {
 
           {/* Visualization Canvas */}
           <div className="relative min-h-0 flex-1 flex overflow-hidden bg-slate-50/40">
+            {mindMapState.loading && (
+              <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-white/60 backdrop-blur-sm transition-all duration-500 animate-in fade-in zoom-in-95">
+                <div className="relative flex h-24 w-24 items-center justify-center mb-6">
+                  <div className="absolute inset-0 animate-[spin_4s_linear_infinite] rounded-full border-2 border-transparent border-t-cyan-500 border-l-cyan-300" />
+                  <div className="absolute inset-2 animate-[spin_3s_linear_infinite_reverse] rounded-full border-2 border-transparent border-b-blue-500 border-r-blue-300" />
+                  <div className="absolute inset-4 animate-[spin_5s_linear_infinite] rounded-full border border-slate-200/50" />
+                  <div className="absolute h-16 w-16 animate-pulse rounded-full bg-cyan-400/20 blur-xl" style={{ animationDuration: '2s' }} />
+                  <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-cyan-500 shadow-xl shadow-cyan-500/20 ring-1 ring-cyan-100">
+                    <MindMapIcon className="h-6 w-6" />
+                  </div>
+                </div>
+                <h3 className="text-[12px] font-[1000] uppercase tracking-[0.3em] text-slate-900 animate-pulse mb-2">
+                  Re-charting Network
+                </h3>
+                <p className="text-[11px] font-medium text-slate-500 max-w-[200px] text-center">
+                  AI is restructuring and translating the knowledge nodes...
+                </p>
+              </div>
+            )}
             <Suspense fallback={<Skeleton className="h-full w-full rounded-none" />}>
               <MindMapCanvas
                 mindMap={mindMapState.data.mindMap}
@@ -2067,9 +2323,12 @@ const DocumentViewer = () => {
 
               {narrativeBody ? (
                 <div className="rounded-[2rem] border border-slate-200/80 bg-white/95 p-7 shadow-sm">
-                  <p className="text-[18px] leading-[1.95] font-medium text-slate-700">
-                    {narrativeBody}
-                  </p>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={summaryModalNarrativeMarkdownComponents}
+                  >
+                    {narrativeBody || ""}
+                  </ReactMarkdown>
                 </div>
               ) : (
                 <>
@@ -2077,9 +2336,12 @@ const DocumentViewer = () => {
                     <p className="text-[9px] font-black uppercase tracking-[0.4em] text-slate-400">
                       Overview
                     </p>
-                    <p className="text-[18px] leading-relaxed font-medium text-slate-600">
-                      {overview}
-                    </p>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={summaryModalOverviewMarkdownComponents}
+                    >
+                      {overview || ""}
+                    </ReactMarkdown>
                   </div>
 
                   <div className="space-y-8">
@@ -2092,9 +2354,14 @@ const DocumentViewer = () => {
                           <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-[11px] font-black text-slate-400 ring-1 ring-slate-200 transition-all group-hover:bg-cyan-500 group-hover:text-white group-hover:ring-0">
                             {i + 1}
                           </div>
-                          <p className="text-[17px] font-bold text-slate-800 leading-snug">
-                            {point}
-                          </p>
+                          <div className="min-w-0 flex-1">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={summaryModalKeyPointMarkdownComponents}
+                            >
+                              {point || ""}
+                            </ReactMarkdown>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -2108,9 +2375,14 @@ const DocumentViewer = () => {
                     <p className="relative z-10 text-[9px] font-black uppercase tracking-[0.4em] text-cyan-500 mb-6">
                       Conclusion
                     </p>
-                    <p className="relative z-10 text-xl font-bold italic leading-relaxed text-slate-50 tracking-tight">
-                      "{conclusion}"
-                    </p>
+                    <div className="relative z-10">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={summaryConclusionMarkdownComponents}
+                      >
+                        {conclusion || ""}
+                      </ReactMarkdown>
+                    </div>
                   </div>
                 </>
               )}

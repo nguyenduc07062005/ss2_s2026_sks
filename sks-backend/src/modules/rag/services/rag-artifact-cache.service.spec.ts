@@ -2,9 +2,7 @@ import { RagArtifactCacheService } from './rag-artifact-cache.service';
 
 describe('RagArtifactCacheService', () => {
   type UpdatePayload = Record<string, unknown>;
-  type UpdateMock = jest.MockedFunction<
-    (id: string, payload: UpdatePayload) => Promise<void>
-  >;
+  type UpdateMock = jest.Mock<Promise<void>, [string, UpdatePayload]>;
 
   const documentRepository = {
     getRepository: jest.fn(() => ({
