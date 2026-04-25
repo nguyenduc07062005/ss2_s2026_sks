@@ -487,9 +487,8 @@ export class RagSummaryService {
   private parseRawSummaryResponse(
     rawResponse: string,
   ): StructuredDocumentSummary {
-    const parsed = parseJsonWithRepair<Partial<StructuredDocumentSummary>>(
-      rawResponse,
-    );
+    const parsed =
+      parseJsonWithRepair<Partial<StructuredDocumentSummary>>(rawResponse);
 
     const structuredSummary = this.coerceStructuredSummary({
       format: typeof parsed.format === 'string' ? parsed.format : 'structured',

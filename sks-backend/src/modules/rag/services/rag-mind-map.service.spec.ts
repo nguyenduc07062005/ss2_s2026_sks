@@ -341,9 +341,9 @@ describe('RagMindMapService', () => {
     expect(result.mindMap.label).toBe('Debugging Notes');
     expect(result.mindMap.children.length).toBeGreaterThanOrEqual(2);
     expect(result.mindMap.children[0]?.label).toBe('Ban chat va dac diem');
-    expect(visibleLabels.some((label) => label.includes('xa hoi chuyen bien'))).toBe(
-      true,
-    );
+    expect(
+      visibleLabels.some((label) => label.includes('xa hoi chuyen bien')),
+    ).toBe(true);
     expect(visibleLabels).not.toContain('Trong giai doan nay');
   });
 });

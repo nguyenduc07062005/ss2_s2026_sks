@@ -331,7 +331,10 @@ export class RagMindMapService {
     language: SummaryLanguage,
   ): MindMapDraft {
     const isVietnamese = language === 'vi';
-    const branches = this.buildSourceDrivenMindMapBranches(chunks, isVietnamese);
+    const branches = this.buildSourceDrivenMindMapBranches(
+      chunks,
+      isVietnamese,
+    );
     const prominentLabels = branches
       .map((branch) => this.normalizeMindMapLabel(branch.label))
       .filter(Boolean)
@@ -385,7 +388,10 @@ export class RagMindMapService {
 
     const desiredGroupCount = Math.min(
       6,
-      Math.max(chunks.length >= 12 ? 4 : 2, Math.round(Math.sqrt(chunks.length))),
+      Math.max(
+        chunks.length >= 12 ? 4 : 2,
+        Math.round(Math.sqrt(chunks.length)),
+      ),
     );
     const bucketSize = Math.ceil(chunks.length / desiredGroupCount);
     const groups: MindMapSourceChunk[][] = [];
@@ -403,7 +409,9 @@ export class RagMindMapService {
     isVietnamese: boolean,
   ): MindMapDraftNode | null {
     const sentences = this.dedupeMindMapDetails(
-      group.flatMap((chunk) => this.extractMindMapSentences(chunk.chunkText, 3)),
+      group.flatMap((chunk) =>
+        this.extractMindMapSentences(chunk.chunkText, 3),
+      ),
     );
     const combinedText = this.normalizeMindMapText(
       group.map((chunk) => chunk.chunkText).join(' '),
@@ -478,12 +486,7 @@ export class RagMindMapService {
           this.deriveSourceDrivenLabel(
             clause,
             clause,
-            this.deriveFallbackNodeLabel(
-              clause,
-              2,
-              clauseIndex,
-              isVietnamese,
-            ),
+            this.deriveFallbackNodeLabel(clause, 2, clauseIndex, isVietnamese),
           ) ||
           this.deriveFallbackNodeLabel(clause, 2, clauseIndex, isVietnamese),
         summary: clause,
@@ -616,7 +619,9 @@ export class RagMindMapService {
       return false;
     }
 
-    if (uniqueLabels.size < Math.ceil(allLabels.filter(Boolean).length * 0.75)) {
+    if (
+      uniqueLabels.size < Math.ceil(allLabels.filter(Boolean).length * 0.75)
+    ) {
       return false;
     }
 
@@ -1063,7 +1068,8 @@ export class RagMindMapService {
     draft: MindMapDraft,
     language: SummaryLanguage,
   ): string {
-    const branchHeader = language === 'vi' ? 'Cac nhanh chinh:' : 'Map branches:';
+    const branchHeader =
+      language === 'vi' ? 'Cac nhanh chinh:' : 'Map branches:';
     const sections = [
       draft.title,
       draft.summary,
@@ -1181,8 +1187,8 @@ export class RagMindMapService {
 
   private normalizeMindMapLabel(value: string | null | undefined): string {
     return this.normalizeMindMapText(value)
-      .replace(/^[,;:.()\[\]\-–]+\s*/, '')
-      .replace(/\s*[,;:.()\[\]\-–]+$/, '')
+      .replace(/^[,;:.()[\]\-–]+\s*/, '')
+      .replace(/\s*[,;:.()[\]\-–]+$/, '')
       .trim();
   }
 

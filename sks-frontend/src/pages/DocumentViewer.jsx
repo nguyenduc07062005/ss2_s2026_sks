@@ -2406,76 +2406,87 @@ const DocumentViewer = () => {
     };
 
     return (
-      <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/45 p-5 backdrop-blur-md animate-in fade-in duration-300">
-        <div className="w-full max-w-lg rounded-[2.5rem] border border-white/10 bg-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+      <div className="fixed inset-0 z-[170] flex items-center justify-center p-5 overflow-hidden">
+        {/* Animated Background Auras */}
+        <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-md transition-all duration-500" />
+        <div className="absolute top-1/4 -left-20 w-[500px] h-[500px] bg-sks-primary/20 rounded-full blur-[120px] animate-pulse pointer-events-none" />
+        <div className="absolute bottom-1/4 -right-20 w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[120px] animate-pulse pointer-events-none" style={{ animationDelay: '2s' }} />
+
+        <div className="relative w-full max-w-lg rounded-[2.5rem] border border-white/40 bg-white/70 backdrop-blur-3xl shadow-sks-heavy overflow-hidden animate-in zoom-in-95 fade-in duration-500">
           {/* Header Section */}
-          <div className="border-b border-slate-100 bg-white px-8 py-6">
+          <div className="relative border-b border-white/20 bg-white/20 px-8 py-7">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-600 shadow-sm ring-1 ring-cyan-100/50">
-                  <HistoryIcon className="h-5 w-5" />
+              <div className="flex items-center gap-5">
+                <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-sks-primary to-blue-600 text-white shadow-lg shadow-sks-primary/20 group overflow-hidden">
+                  <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
+                  <HistoryIcon className="relative h-6 w-6 z-10" />
                 </div>
                 <div className="space-y-0.5">
-                  <h3 className="text-xl font-[1000] tracking-tight text-slate-900">
+                  <h3 className="text-2xl font-[1000] tracking-tight text-sks-slate-900 leading-none">
                     Summary History
                   </h3>
-                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
-                    Manage different versions
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-sks-slate-400">
+                    Vault of intelligence
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSummaryHistoryOpen(false)}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-slate-50 hover:text-slate-900"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sks-slate-400 transition-all hover:bg-white hover:text-rose-500 hover:shadow-sm"
               >
                 <CloseIcon />
               </button>
             </div>
           </div>
 
-          <div className="max-h-[65vh] overflow-y-auto p-8 scrollbar-none space-y-8">
+          <div className="max-h-[60vh] overflow-y-auto p-8 scrollbar-none space-y-10 relative">
             {/* System Standard Section */}
-            <div className="space-y-4">
-              <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-400 pl-1">
-                AI Baseline
-              </h4>
+            <div className="space-y-5">
+              <div className="flex items-center gap-3 pl-1">
+                <div className="h-1 w-1 rounded-full bg-sks-primary" />
+                <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-sks-slate-400">
+                  AI Baseline
+                </h4>
+              </div>
+              
               <button
                 type="button"
                 onClick={() => handleSelectSummaryVersion("default")}
-                className={`group relative flex w-full items-center gap-5 rounded-[2rem] border p-5 text-left transition-all duration-300 overflow-hidden ${
+                className={`group relative flex w-full items-center gap-5 rounded-[2rem] border p-5 text-left transition-all duration-500 overflow-hidden ${
                   activeSlot === "default"
-                    ? "border-cyan-200 bg-cyan-50/40 shadow-sm"
-                    : "border-slate-100 bg-white hover:border-cyan-100 hover:bg-cyan-50/10"
+                    ? "border-sks-primary/30 bg-white/60 shadow-sks-medium"
+                    : "border-white/40 bg-white/30 hover:border-sks-primary/20 hover:bg-white/50 hover:-translate-y-0.5"
                 }`}
               >
-                {/* Active Marker Line */}
+                {/* Active Glow Effect */}
                 {activeSlot === "default" && (
-                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-cyan-500" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-sks-primary/5 to-transparent pointer-events-none" />
                 )}
 
-                <div className="flex min-w-0 flex-1 items-center gap-4">
+                <div className="flex min-w-0 flex-1 items-center gap-5">
                   <div
-                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition-all duration-500 ${
                       activeSlot === "default"
-                        ? "bg-white text-cyan-600 shadow-sm ring-1 ring-cyan-100"
-                        : "bg-slate-50 text-slate-400 group-hover:bg-cyan-50 group-hover:text-cyan-600"
+                        ? "bg-sks-primary text-white shadow-[0_8px_20px_-4px_rgba(14,165,233,0.4)]"
+                        : "bg-white/50 text-sks-slate-400 group-hover:bg-white group-hover:text-sks-primary"
                     }`}
                   >
-                    <RestoreIcon className="h-5 w-5" />
+                    <RestoreIcon className="h-6 w-6" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="truncate text-[15px] font-[1000] text-slate-900 group-hover:text-cyan-700 transition-colors">
+                    <div className="flex items-center gap-3 mb-1">
+                      <span className="truncate text-base font-[1000] text-sks-slate-900 group-hover:text-sks-primary transition-colors">
                         {defaultSummaryVersion?.title || "System Default Summary"}
                       </span>
                       {activeSlot === "default" && (
-                        <span className="flex h-5 items-center px-1.5 rounded-md bg-cyan-500 text-[8px] font-black uppercase tracking-widest text-white shadow-sm">
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-sks-primary text-[8px] font-black uppercase tracking-widest text-white shadow-[0_0_12px_rgba(14,165,233,0.3)]">
+                          <span className="h-1 w-1 rounded-full bg-white animate-pulse" />
                           Active
-                        </span>
+                        </div>
                       )}
                     </div>
-                    <p className="text-[12px] font-medium text-slate-400">
+                    <p className="text-[12px] font-medium text-sks-slate-500">
                       Standard knowledge extraction by SKS AI
                     </p>
                   </div>
@@ -2484,10 +2495,14 @@ const DocumentViewer = () => {
             </div>
 
             {/* Custom History Section */}
-            <div className="space-y-4">
-              <h4 className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-400 pl-1">
-                Custom Personalizations
-              </h4>
+            <div className="space-y-5 pb-2">
+              <div className="flex items-center gap-3 pl-1">
+                <div className="h-1 w-1 rounded-full bg-blue-500" />
+                <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-sks-slate-400">
+                  Custom Personalizations
+                </h4>
+              </div>
+              
               {hasSummaryHistory ? (
                 <div className="space-y-4">
                   {summaryHistoryVersions.map((version, index) => {
@@ -2506,41 +2521,37 @@ const DocumentViewer = () => {
                         key={`${version.slot}-${index}`}
                         type="button"
                         onClick={() => handleSelectSummaryVersion(version.slot)}
-                        className={`group relative flex w-full flex-col gap-4 rounded-[2rem] border px-6 py-5 text-left transition-all duration-500 overflow-hidden ${
+                        className={`group relative flex w-full flex-col gap-4 rounded-[2.25rem] border px-6 py-6 text-left transition-all duration-500 overflow-hidden ${
                           isSelected
-                            ? "border-cyan-200 bg-cyan-50/40 shadow-md"
-                            : "border-slate-100 bg-white hover:border-cyan-100 hover:shadow-xl hover:shadow-cyan-500/5 hover:-translate-y-0.5"
+                            ? "border-blue-200 bg-white/80 shadow-sks-medium ring-1 ring-blue-100/50"
+                            : "border-white/40 bg-white/30 hover:border-blue-100 hover:bg-white/60 hover:shadow-sks-soft hover:-translate-y-1"
                         }`}
                       >
-                        {/* Active Marker Line */}
-                        {isSelected && (
-                          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-cyan-500" />
-                        )}
-
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex min-w-0 flex-1 items-start gap-4">
                             <div
-                              className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
+                              className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all duration-500 ${
                                 isSelected
-                                  ? "bg-white text-cyan-600 shadow-sm ring-1 ring-cyan-100"
-                                  : "bg-slate-50 text-slate-400 group-hover:bg-cyan-50 group-hover:text-cyan-600"
+                                  ? "bg-blue-500 text-white shadow-lg shadow-blue-500/20"
+                                  : "bg-white/50 text-sks-slate-400 group-hover:bg-white group-hover:text-blue-500"
                               }`}
                             >
                               <SummaryCardIcon className="h-5 w-5" />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 mb-1.5">
-                                <h5 className="truncate text-[15px] font-[1000] text-slate-900 group-hover:text-cyan-700 transition-colors">
+                              <div className="flex items-center gap-3 mb-1.5">
+                                <h5 className="truncate text-base font-[1000] text-sks-slate-900 group-hover:text-blue-600 transition-colors">
                                   {version.title || `Custom Iteration ${index + 1}`}
                                 </h5>
                                 {isSelected && (
-                                  <span className="flex h-5 items-center px-1.5 rounded-md bg-cyan-500 text-[8px] font-black uppercase tracking-widest text-white shadow-sm">
+                                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-500 text-[8px] font-black uppercase tracking-widest text-white shadow-lg shadow-blue-500/20">
+                                    <span className="h-1 w-1 rounded-full bg-white animate-pulse" />
                                     Active
-                                  </span>
+                                  </div>
                                 )}
                               </div>
-                              <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
-                                <ClockIcon className="h-3.5 w-3.5" />
+                              <div className="flex items-center gap-2 text-[10px] font-bold text-sks-slate-400">
+                                <ClockIcon className="h-3.5 w-3.5 opacity-70" />
                                 <span>{generatedLabel || "Recently generated"}</span>
                               </div>
                             </div>
@@ -2548,10 +2559,10 @@ const DocumentViewer = () => {
                         </div>
 
                         {promptText && (
-                          <div className="relative rounded-[1.25rem] bg-slate-50 px-4 py-3.5 ring-1 ring-slate-100/50">
-                            <div className="absolute left-0 top-4 bottom-4 w-1 rounded-full bg-slate-200" />
-                            <p className="line-clamp-2 text-[12px] font-medium leading-relaxed text-slate-600 pl-2">
-                              {promptText}
+                          <div className="relative rounded-2xl bg-slate-950/5 px-4 py-3.5 border border-black/[0.03]">
+                            <div className="absolute left-0 top-3 bottom-3 w-0.5 rounded-full bg-sks-slate-200" />
+                            <p className="line-clamp-2 text-[11px] font-semibold italic leading-relaxed text-sks-slate-600 pl-2">
+                              "{promptText}"
                             </p>
                           </div>
                         )}
@@ -2560,15 +2571,21 @@ const DocumentViewer = () => {
                   })}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center rounded-[2rem] border border-dashed border-slate-200 bg-slate-50/30 py-12 px-6 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-300 shadow-sm ring-1 ring-slate-100 mb-4">
-                    <HistoryIcon className="h-6 w-6" />
+                <div className="flex flex-col items-center justify-center rounded-[2.5rem] border border-dashed border-white/60 bg-white/20 py-16 px-8 text-center backdrop-blur-sm group hover:bg-white/30 transition-all duration-500">
+                  <div className="relative mb-6">
+                    <div className="absolute inset-0 bg-sks-primary/20 blur-2xl rounded-full animate-pulse" />
+                    <div className="relative flex h-16 w-16 items-center justify-center rounded-3xl bg-white/80 text-sks-slate-300 shadow-sks-soft ring-1 ring-white/60 animate-float">
+                      <HistoryIcon className="h-7 w-7 opacity-50" />
+                    </div>
+                    <div className="absolute -top-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-100">
+                      <SparklesIcon className="h-3 w-3 text-amber-400" />
+                    </div>
                   </div>
-                  <h5 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-900 mb-1.5">
+                  <h5 className="text-[12px] font-[1000] uppercase tracking-[0.3em] text-sks-slate-900 mb-2">
                     History Empty
                   </h5>
-                  <p className="text-[12px] font-medium text-slate-400 max-w-[180px] leading-relaxed">
-                    Personalized summaries will appear here once created.
+                  <p className="text-[12px] font-medium text-sks-slate-500 max-w-[220px] leading-relaxed">
+                    Start personalizing your knowledge vault to see different versions here.
                   </p>
                 </div>
               )}

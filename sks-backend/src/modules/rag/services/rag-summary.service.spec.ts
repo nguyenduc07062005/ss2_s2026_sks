@@ -350,9 +350,8 @@ describe('RagSummaryService', () => {
   });
 
   it('repairs malformed raw Gemini JSON before parsing the summary payload', () => {
-    const parsed = (
-      service as unknown as StructuredSummaryInternals
-    ).parseRawSummaryResponse(`\`\`\`json
+    const parsed = (service as unknown as StructuredSummaryInternals)
+      .parseRawSummaryResponse(`\`\`\`json
 {
   "format": "structured",
   "title": "Debugging Notes",

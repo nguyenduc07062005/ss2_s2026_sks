@@ -17,8 +17,7 @@ export const extractJsonCandidate = (rawResponse: string): string => {
     return trimmedResponse;
   }
 
-  const prefersObject =
-    hasObject && (!hasArray || objectStart <= arrayStart);
+  const prefersObject = hasObject && (!hasArray || objectStart <= arrayStart);
   const startIndex = prefersObject ? objectStart : arrayStart;
   const openChar = prefersObject ? '{' : '[';
   const closeChar = prefersObject ? '}' : ']';
