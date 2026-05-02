@@ -23,6 +23,7 @@ import { DocumentService } from './document.service';
 import { DocumentDto } from './dtos/document.dto';
 import { DeleteDocumentDto } from './dtos/delete-document.dto';
 import { SearchDocumentDto } from './dtos/search-document.dto';
+import { UpdateDocumentNoteDto } from './dtos/update-document-note.dto';
 import { UpdateDocumentNameDto } from './dtos/update-document-name.dto';
 import { JwtAuthGuard } from '../authentication/jwt/jwt-auth.guard';
 import { RagService } from '../rag/rag.service';
@@ -229,6 +230,67 @@ export class DocumentController {
     return {
       message: 'Document retrieved successfully',
       document,
+    };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @Get(':documentId/note')
+  async getDocumentNote(
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Request() req: ExpressRequest,
+  ) {
+    const ownerId = this.getUserId(req);
+    const note = await this.documentService.getDocumentNote(
+      documentId,
+      ownerId,
+    );
+
+    return {
+      message: 'Document note retrieved successfully',
+      note,
+    };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @Patch(':documentId/note')
+  async updateDocumentNote(
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Body() body: UpdateDocumentNoteDto,
+    @Request() req: ExpressRequest,
+  ) {
+    const ownerId = this.getUserId(req);
+    const note = await this.documentService.updateDocumentNote(
+      documentId,
+      ownerId,
+      body,
+    );
+
+    return {
+      message: 'Document note saved successfully',
+      note,
+    };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @Delete(':documentId/note/:noteId')
+  async deleteDocumentNote(
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Param('noteId') noteId: string,
+    @Request() req: ExpressRequest,
+  ) {
+    const ownerId = this.getUserId(req);
+    const note = await this.documentService.deleteDocumentNote(
+      documentId,
+      ownerId,
+      noteId,
+    );
+
+    return {
+      message: 'Document note deleted successfully',
+      note,
     };
   }
 

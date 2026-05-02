@@ -34,7 +34,7 @@ const Login = () => {
 
       setToken(response.accessToken);
       getRoleFromToken();
-      const nextPath = location.state?.from?.pathname || '/app/home';
+      const nextPath = location.state?.from?.pathname || '/app';
       const nextSearch = location.state?.from?.search || '';
       navigate(`${nextPath}${nextSearch}`, { replace: true });
     } catch (requestError) {

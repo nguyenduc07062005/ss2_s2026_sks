@@ -1,7 +1,17 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import { RagSummaryService } from './rag-summary.service';
 
 describe('RagSummaryService', () => {
+  const richOverview =
+    'The document explains a debugging workflow that starts from observing a failure, narrows the suspected cause through evidence, and verifies the fix with repeatable checks.';
+  const richKeyPoints = [
+    'Start by reproducing the failure consistently so later changes can be compared against the same observable behavior.',
+    'Use logs, traces, and small experiments to separate likely causes from assumptions before changing production code.',
+    'After the cause is isolated, apply the smallest focused fix and rerun the same checks to confirm the behavior changed.',
+  ];
+  const richConclusion =
+    'The central takeaway is that effective debugging depends on disciplined evidence gathering, focused changes, and explicit verification after the fix.';
+
   type OwnedDocument = {
     id: string;
     title: string;
@@ -110,9 +120,9 @@ describe('RagSummaryService', () => {
       versions: {
         default: {
           title: 'Existing summary',
-          overview: 'Stored overview.',
-          key_points: ['Stored point'],
-          conclusion: 'Stored conclusion.',
+          overview: richOverview,
+          key_points: richKeyPoints,
+          conclusion: richConclusion,
           language: 'en' as const,
           generatedAt: '2026-04-11T00:00:00.000Z',
           sources: [],
@@ -142,6 +152,84 @@ describe('RagSummaryService', () => {
     expect(ragArtifactCacheService.saveSummary).not.toHaveBeenCalled();
   });
 
+  it('ignores truncated cached summaries and regenerates them', async () => {
+    const document = {
+      id: 'doc-1',
+      title: 'Socialism Notes',
+    };
+    const representativeChunks = [
+      {
+        chunkIndex: 0,
+        chunkText: 'Relevant context about socialism and transition periods.',
+        pageNumber: 1,
+        sectionTitle: 'Introduction',
+      },
+    ];
+    const brokenSummaryState = {
+      activeSlot: 'custom' as const,
+      versions: {
+        custom: {
+          title: 'Broken custom summary',
+          overview: 'Chủ nghĩa xã hội (CNXH',
+          key_points: [],
+          conclusion: '',
+          format: 'narrative' as const,
+          body: 'Chủ nghĩa xã hội (CNXH',
+          language: 'vi' as const,
+          generatedAt: '2026-04-11T00:00:00.000Z',
+          sources: [],
+          slot: 'custom' as const,
+          instruction: 'hãy tạo thành 1 đoạn văn',
+        },
+      },
+    };
+    const nextSummaryState = {
+      activeSlot: 'default' as const,
+      versions: {
+        default: {
+          title: 'Regenerated summary',
+          overview: richOverview,
+          key_points: richKeyPoints,
+          conclusion: richConclusion,
+          language: 'vi' as const,
+          generatedAt: '2026-04-12T00:00:00.000Z',
+          sources: [],
+          slot: 'default' as const,
+          instruction: null,
+        },
+      },
+    };
+
+    ragDocumentContextService.ensureOwnedDocument.mockResolvedValue(document);
+    ragArtifactCacheService.getSummaryState
+      .mockReturnValueOnce(brokenSummaryState)
+      .mockReturnValueOnce(nextSummaryState);
+    ragDocumentContextService.getRepresentativeChunks.mockResolvedValue(
+      representativeChunks,
+    );
+    ragDocumentContextService.buildSummaryContext.mockReturnValue(
+      'Relevant context',
+    );
+    jest
+      .spyOn(
+        service as unknown as StructuredSummaryInternals,
+        'generateStructuredSummary',
+      )
+      .mockResolvedValue({
+        title: 'Regenerated summary',
+        overview: richOverview,
+        key_points: richKeyPoints,
+        conclusion: richConclusion,
+      });
+
+    const result = await service.generateSummary('doc-1', 'user-1', 'vi');
+
+    expect(result.cached).toBe(false);
+    expect(result.title).toBe('Regenerated summary');
+    expect(ragDocumentContextService.getRepresentativeChunks).toHaveBeenCalled();
+    expect(ragArtifactCacheService.saveSummary).toHaveBeenCalled();
+  });
+
   it('stores a custom summary without deleting the default one', async () => {
     const document = {
       id: 'doc-1',
@@ -160,9 +248,9 @@ describe('RagSummaryService', () => {
       versions: {
         default: {
           title: 'Default summary',
-          overview: 'Stored overview.',
-          key_points: ['Stored point'],
-          conclusion: 'Stored conclusion.',
+          overview: richOverview,
+          key_points: richKeyPoints,
+          conclusion: richConclusion,
           language: 'en' as const,
           generatedAt: '2026-04-11T00:00:00.000Z',
           sources: [],
@@ -177,9 +265,9 @@ describe('RagSummaryService', () => {
         ...cachedSummaryState.versions,
         custom: {
           title: 'Custom summary',
-          overview: 'Custom overview.',
-          key_points: ['Custom point'],
-          conclusion: 'Custom conclusion.',
+          overview: richOverview,
+          key_points: richKeyPoints,
+          conclusion: richConclusion,
           language: 'en' as const,
           generatedAt: '2026-04-12T00:00:00.000Z',
           sources: [],
@@ -208,9 +296,9 @@ describe('RagSummaryService', () => {
       )
       .mockResolvedValue({
         title: 'Custom summary',
-        overview: 'Custom overview.',
-        key_points: ['Custom point'],
-        conclusion: 'Custom conclusion.',
+        overview: richOverview,
+        key_points: richKeyPoints,
+        conclusion: richConclusion,
       });
 
     const result = await service.generateSummary(
@@ -256,7 +344,7 @@ describe('RagSummaryService', () => {
     expect(ragStructuredGenerationService.generate).not.toHaveBeenCalled();
   });
 
-  it('falls back to safe copy when structured summary generation returns no payload', async () => {
+  it('rejects unusable generated summaries instead of saving broken cache', async () => {
     const document = {
       id: 'doc-1',
       title: 'Debugging Notes',
@@ -269,31 +357,8 @@ describe('RagSummaryService', () => {
         sectionTitle: 'Introduction',
       },
     ];
-    const nextSummaryState = {
-      activeSlot: 'default' as const,
-      versions: {
-        default: {
-          title: 'Summary of Debugging Notes',
-          overview:
-            'The available context was not sufficient to extract a complete overview of the document.',
-          key_points: [
-            'The extracted context was not sufficient to recover all important points reliably.',
-          ],
-          conclusion:
-            'This summary reflects only the content that was successfully extracted.',
-          language: 'en' as const,
-          generatedAt: '2026-04-12T00:00:00.000Z',
-          sources: [],
-          slot: 'default' as const,
-          instruction: null,
-        },
-      },
-    };
-
     ragDocumentContextService.ensureOwnedDocument.mockResolvedValue(document);
-    ragArtifactCacheService.getSummaryState
-      .mockReturnValueOnce(null)
-      .mockReturnValueOnce(nextSummaryState);
+    ragArtifactCacheService.getSummaryState.mockReturnValue(null);
     ragIndexingService.ensureDocumentIndexed.mockResolvedValue(undefined);
     ragDocumentContextService.getRepresentativeChunks.mockResolvedValue(
       representativeChunks,
@@ -311,19 +376,10 @@ describe('RagSummaryService', () => {
       )
       .mockResolvedValue(undefined);
 
-    const result = await service.generateSummary('doc-1', 'user-1', 'en');
-
-    expect(result.cached).toBe(false);
-    expect(result.title).toBe('Summary of Debugging Notes');
-    expect(result.overview).toBe(
-      'The available context was not sufficient to extract a complete overview of the document.',
-    );
-    expect(result.key_points).toEqual([
-      'The extracted context was not sufficient to recover all important points reliably.',
-    ]);
-    expect(result.conclusion).toBe(
-      'This summary reflects only the content that was successfully extracted.',
-    );
+    await expect(
+      service.generateSummary('doc-1', 'user-1', 'en'),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+    expect(ragArtifactCacheService.saveSummary).not.toHaveBeenCalled();
   });
 
   it('normalizes partial structured summaries without requiring key_points', () => {

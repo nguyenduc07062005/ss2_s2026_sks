@@ -4,8 +4,8 @@ import { getProfile } from '../../service/authAPI.js';
 import { clearToken } from '../../utils/auth.js';
 
 const NAV_ITEMS = [
-  { to: '/app/home', label: 'Home' },
   { to: '/app', label: 'Workspace', end: true },
+  { to: '/app/study-gps', label: 'Study GPS' },
   { to: '/app/favorites', label: 'Favorites' },
 ];
 
@@ -16,6 +16,7 @@ const WorkspaceShell = () => {
   const [isScrolled, setIsScrolled] = useState(false);
 
   const isDocumentViewer = /^\/app\/documents\//.test(location.pathname);
+  const isHeaderCompact = isScrolled || isDocumentViewer;
 
   useEffect(() => {
     let isActive = true;
@@ -73,18 +74,18 @@ const WorkspaceShell = () => {
 
       <header
         className={`fixed top-0 left-0 right-0 z-[100] flex w-full items-center transition-all duration-300 ${
-          isScrolled
-            ? 'h-16 border-b border-slate-200/60 bg-white/95 shadow-md backdrop-blur-xl'
-            : 'h-20 bg-transparent border-transparent shadow-none'
+          isHeaderCompact
+            ? 'h-16 border-b border-slate-200 bg-white shadow-lg shadow-slate-900/10'
+            : 'h-20 border-b border-slate-200/80 bg-white shadow-sm shadow-slate-900/5'
         }`}
       >
-        <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between px-6 lg:px-10">
+        <div className="relative mx-auto flex w-full max-w-[1440px] items-center justify-between px-6 lg:px-10">
 
           <div className="flex items-center gap-8 min-w-0">
             {/* ── Brand Logo (Synced) ── */}
             <button
               type="button"
-              onClick={() => navigate('/app/home')}
+              onClick={() => navigate('/app')}
               className="group flex items-center gap-4 transition-all outline-none"
             >
               <div className="relative flex h-9 w-9 items-center justify-center">
@@ -105,15 +106,15 @@ const WorkspaceShell = () => {
               </div>
             </button>
 
-            <nav className="hidden items-center gap-8 md:flex ml-4">
+            <nav className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-10 lg:flex">
               {NAV_ITEMS.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
                   end={item.end}
                   className={({ isActive }) =>
-                    `relative py-1 text-[13px] font-black tracking-wide transition-all ${
-                      isActive ? 'text-slate-900' : 'text-slate-400 hover:text-slate-900'
+                    `relative whitespace-nowrap py-1 text-center text-[13px] font-black tracking-wide transition-all ${
+                      isActive ? 'text-slate-950' : 'text-slate-500 hover:text-slate-950'
                     }`
                   }
                 >

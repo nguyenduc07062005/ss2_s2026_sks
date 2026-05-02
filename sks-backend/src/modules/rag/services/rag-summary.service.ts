@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { UserDocumentRepository } from 'src/database/repositories/user-document.repository';
+import { repairMojibakeText } from 'src/common/utils/text-encoding';
 import {
   DocumentSummaryResponse,
   StructuredDocumentSummary,
@@ -179,8 +180,17 @@ export class RagSummaryService {
       cachedSummaryState,
       requestedSlot,
     );
+    const cachedSummary = cachedSummarySlot
+      ? cachedSummaryState?.versions?.[cachedSummarySlot]
+      : undefined;
 
-    if (cachedSummaryState && cachedSummarySlot && !forceRefresh) {
+    if (
+      cachedSummaryState &&
+      cachedSummarySlot &&
+      cachedSummary &&
+      this.isUsableSummary(cachedSummary) &&
+      !forceRefresh
+    ) {
       return this.buildSummaryResponse(
         cachedSummaryState,
         cachedSummarySlot,
@@ -216,6 +226,13 @@ export class RagSummaryService {
       document.title ?? 'Untitled document',
       language,
     );
+
+    if (!this.isUsableSummary(normalizedSummary)) {
+      throw new BadGatewayException(
+        'Summary generation returned too little usable content. Please regenerate the summary.',
+      );
+    }
+
     const targetSlot = requestedSlot ?? 'default';
     const summaryArtifact: SummaryArtifact = {
       ...normalizedSummary,
@@ -293,7 +310,7 @@ export class RagSummaryService {
         skipFunctionCalling: true,
         modelOptions: {
           temperature: 0.2,
-          maxOutputTokens: 1400,
+          maxOutputTokens: 8192,
           topP: 0.85,
         },
         coerce: (value) => this.coerceStructuredSummary(value),
@@ -434,6 +451,54 @@ export class RagSummaryService {
     return null;
   }
 
+  private isUsableSummary(
+    summary: StructuredDocumentSummary | SummaryArtifact | undefined,
+  ): boolean {
+    if (!summary) {
+      return false;
+    }
+
+    const title = this.normalizeLine(summary.title);
+    const body = this.normalizeParagraph(summary.body);
+    const overview = this.normalizeParagraph(summary.overview);
+    const conclusion = this.normalizeParagraph(summary.conclusion);
+    const keyPoints = Array.isArray(summary.key_points)
+      ? summary.key_points
+          .map((point) => this.normalizeLine(point))
+          .filter(Boolean)
+      : [];
+    const combinedText = [title, body, overview, conclusion, ...keyPoints]
+      .filter(Boolean)
+      .join(' ');
+
+    if (!combinedText || this.isGenericFallbackSummary(combinedText)) {
+      return false;
+    }
+
+    if (summary.format === 'narrative') {
+      return body.length >= 80;
+    }
+
+    return (
+      overview.length >= 60 ||
+      conclusion.length >= 40 ||
+      keyPoints.some((point) => point.length >= 40)
+    );
+  }
+
+  private isGenericFallbackSummary(value: string): boolean {
+    const normalizedValue = this.normalizeLine(value).toLowerCase();
+
+    return [
+      'available context was not sufficient',
+      'extracted context was not sufficient',
+      'successfully extracted',
+      'chưa thể trích xuất đủ ngữ cảnh',
+      'ngữ cảnh trích xuất từ tài liệu chưa đủ rõ',
+      'bản tóm tắt hiện tại chỉ phản ánh',
+    ].some((pattern) => normalizedValue.includes(pattern));
+  }
+
   private buildSummaryResponse(
     summaryState: SummaryLanguageCache,
     selectedSlot: SummaryVersionSlot,
@@ -477,11 +542,11 @@ export class RagSummaryService {
   }
 
   private normalizeLine(value: string | null | undefined): string {
-    return (value ?? '').replace(/\s+/g, ' ').trim();
+    return repairMojibakeText(value).replace(/\s+/g, ' ').trim();
   }
 
   private normalizeParagraph(value: string | null | undefined): string {
-    return (value ?? '').replace(/\s+/g, ' ').trim();
+    return repairMojibakeText(value).replace(/\s+/g, ' ').trim();
   }
 
   private parseRawSummaryResponse(

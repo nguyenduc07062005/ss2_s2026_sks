@@ -1,16 +1,32 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { ChatGoogle, ChatGoogleParams } from '@langchain/google';
 
 const DEFAULT_TEXT_MODEL = 'gemini-2.5-flash';
-const DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-001';
-const DEFAULT_FALLBACK_MODELS = [
-  'gemini-3-flash',
-  'gemini-3.1-flash-lite',
+const DEFAULT_FALLBACK_TEXT_MODELS = [
   'gemini-2.5-flash-lite',
+  'gemini-flash-lite-latest',
+  'gemini-flash-latest',
+  'gemini-3.1-flash-lite-preview',
 ] as const;
+const DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-001';
 const TEMPORARY_MODEL_COOLDOWN_MS = 60_000;
+
+export type GenerateTextOptions = {
+  model?: string;
+  temperature?: number;
+  topP?: number;
+  topK?: number;
+  maxOutputTokens?: number;
+  responseMimeType?: string;
+  responseSchema?: object;
+};
 
 @Injectable()
 export class GeminiService {
@@ -36,7 +52,7 @@ export class GeminiService {
 
   async generateText(
     prompt: string,
-    options: { model?: string } = {},
+    options: GenerateTextOptions = {},
   ): Promise<string> {
     const normalizedPrompt = prompt?.trim();
 
@@ -52,6 +68,7 @@ export class GeminiService {
         const result = await this.ai.models.generateContent({
           model,
           contents: normalizedPrompt,
+          ...this.buildGenerateContentConfig(options),
         });
 
         if (!result.text) {
@@ -81,6 +98,12 @@ export class GeminiService {
       }
     }
 
+    if (lastError && this.isRetryableTextError(lastError)) {
+      throw new ServiceUnavailableException(
+        'AI service is temporarily unavailable or quota limit has been reached. Please wait a bit and try again.',
+      );
+    }
+
     if (lastError instanceof Error) {
       throw lastError;
     }
@@ -97,10 +120,22 @@ export class GeminiService {
       throw new BadRequestException('Text must not be empty');
     }
 
-    const response = await this.ai.models.embedContent({
-      model: this.embeddingModel,
-      contents: normalizedText,
-    });
+    let response: Awaited<ReturnType<typeof this.ai.models.embedContent>>;
+
+    try {
+      response = await this.ai.models.embedContent({
+        model: this.embeddingModel,
+        contents: normalizedText,
+      });
+    } catch (error) {
+      if (this.isRetryableTextError(error)) {
+        throw new ServiceUnavailableException(
+          'AI embedding service is temporarily unavailable or quota limit has been reached. Please wait a bit and try again.',
+        );
+      }
+
+      throw error;
+    }
 
     const values = response.embeddings?.[0]?.values;
 
@@ -124,19 +159,23 @@ export class GeminiService {
   }
 
   private buildTextModelCandidates(): string[] {
+    const fallbackConfig = this.configService.get<string>(
+      'GEMINI_TEXT_MODEL_FALLBACK',
+    );
+    const fallbacksConfig = this.configService.get<string>(
+      'GEMINI_TEXT_MODEL_FALLBACKS',
+    );
     const configuredFallbacks = [
-      ...this.parseTextModelList(
-        this.configService.get<string>('GEMINI_TEXT_MODEL_FALLBACK'),
-      ),
-      ...this.parseTextModelList(
-        this.configService.get<string>('GEMINI_TEXT_MODEL_FALLBACKS'),
-      ),
+      ...this.parseTextModelList(fallbackConfig),
+      ...this.parseTextModelList(fallbacksConfig),
     ];
+    const hasExplicitFallbackConfig =
+      fallbackConfig !== undefined || fallbacksConfig !== undefined;
 
     return this.dedupeTextModels([
       this.generationModel,
       ...configuredFallbacks,
-      ...DEFAULT_FALLBACK_MODELS,
+      ...(hasExplicitFallbackConfig ? [] : DEFAULT_FALLBACK_TEXT_MODELS),
     ]);
   }
 
@@ -228,7 +267,33 @@ export class GeminiService {
       'rate limit',
       '503',
       'unavailable',
+      '404',
+      'not found',
+      'is not found for api version',
+      'model not found',
     ].some((token) => errorMessage.includes(token));
+  }
+
+  private buildGenerateContentConfig(
+    options: GenerateTextOptions,
+  ): { config: Omit<GenerateTextOptions, 'model'> } | Record<string, never> {
+    const config = {
+      ...(typeof options.temperature === 'number'
+        ? { temperature: options.temperature }
+        : {}),
+      ...(typeof options.topP === 'number' ? { topP: options.topP } : {}),
+      ...(typeof options.topK === 'number' ? { topK: options.topK } : {}),
+      ...(typeof options.maxOutputTokens === 'number'
+        ? { maxOutputTokens: options.maxOutputTokens }
+        : {}),
+      ...(typeof options.responseMimeType === 'string' &&
+      options.responseMimeType.trim()
+        ? { responseMimeType: options.responseMimeType.trim() }
+        : {}),
+      ...(options.responseSchema ? { responseSchema: options.responseSchema } : {}),
+    };
+
+    return Object.keys(config).length > 0 ? { config } : {};
   }
 
   private toErrorMessage(error: unknown): string {

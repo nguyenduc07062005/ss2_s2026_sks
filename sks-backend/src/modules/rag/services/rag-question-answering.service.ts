@@ -11,6 +11,7 @@ import {
   AskHistoryItem,
   RagAnswerResponse,
   RagSource,
+  StudyGpsDayChatMessage,
 } from '../types/rag.types';
 
 const DEFAULT_RETRIEVAL_LIMIT = 8;
@@ -151,13 +152,91 @@ export class RagQuestionAnsweringService {
     );
   }
 
+  async answerStudyGpsDay(
+    ownerId: string,
+    question: string,
+    options: {
+      documentIds: string[];
+      scopeLabel: string;
+      studyContext: string;
+      recentMessages?: StudyGpsDayChatMessage[];
+    },
+  ): Promise<RagAnswerResponse> {
+    const trimmedQuestion = question.trim();
+
+    if (!trimmedQuestion) {
+      throw new BadRequestException('Message is required');
+    }
+
+    const documentIds = [...new Set(options.documentIds.filter(Boolean))];
+
+    if (documentIds.length === 0) {
+      throw new BadRequestException(
+        'Study GPS chat requires at least one document.',
+      );
+    }
+
+    await Promise.all(
+      documentIds.map(async (documentId) => {
+        await this.ragDocumentContextService.ensureOwnedDocument(
+          documentId,
+          ownerId,
+        );
+        await this.ragIndexingService.ensureDocumentIndexed(documentId);
+      }),
+    );
+
+    const studyContext = this.normalizeConversationText(options.studyContext);
+    const retrievalQuestion = [studyContext, trimmedQuestion]
+      .filter(Boolean)
+      .join('\n\n');
+    const retrievedChunks = await this.retrieveRelevantChunks(
+      retrievalQuestion,
+      ownerId,
+      { scopedFolderId: null },
+      {
+        documentIds,
+        limit: DEFAULT_RETRIEVAL_LIMIT,
+      },
+    );
+    const answer = await this.answerQuestionWithConversation(
+      trimmedQuestion,
+      retrievedChunks,
+      options.scopeLabel,
+      this.buildRecentConversationContextFromTurns(
+        options.recentMessages ?? [],
+      ),
+      studyContext,
+    );
+
+    return {
+      answer,
+      sources: this.toSources(retrievedChunks),
+    };
+  }
+
   private async answerQuestion(
     question: string,
     chunks: RetrievedChunkRow[],
     scopeLabel: string,
     recentHistory: DocumentAskHistory[],
   ): Promise<string> {
-    const context =
+    return this.answerQuestionWithConversation(
+      question,
+      chunks,
+      scopeLabel,
+      this.buildRecentConversationContext(recentHistory),
+    );
+  }
+
+  private async answerQuestionWithConversation(
+    question: string,
+    chunks: RetrievedChunkRow[],
+    scopeLabel: string,
+    recentConversation: string,
+    contextPrefix = '',
+  ): Promise<string> {
+    const chunkContext =
       chunks.length > 0
         ? chunks
             .map((chunk, index) =>
@@ -170,8 +249,10 @@ export class RagQuestionAnsweringService {
             )
             .join('\n\n')
         : 'No relevant document context was retrieved for this question.';
-    const recentConversation =
-      this.buildRecentConversationContext(recentHistory);
+    const context = [contextPrefix, chunkContext]
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .join('\n\n');
     const now = new Date();
     const currentDate = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Saigon',
@@ -240,12 +321,13 @@ export class RagQuestionAnsweringService {
     scope: RetrievalScope,
     options: {
       documentId?: string;
+      documentIds?: string[];
       limit?: number;
     } = {},
   ): Promise<RetrievedChunkRow[]> {
     const queryEmbedding = await this.geminiService.createEmbedding(question);
     const queryEmbeddingSql = this.toVectorSql(queryEmbedding);
-    const params: Array<string | number> = [queryEmbeddingSql, ownerId];
+    const params: unknown[] = [queryEmbeddingSql, ownerId];
     const whereClauses = ['ud.user_id = $2', 'c.embedding IS NOT NULL'];
 
     if (scope.scopedFolderId) {
@@ -256,6 +338,13 @@ export class RagQuestionAnsweringService {
     if (options.documentId) {
       params.push(options.documentId);
       whereClauses.push(`d.id = $${params.length}`);
+    } else if (options.documentIds?.length) {
+      const documentIds = [...new Set(options.documentIds.filter(Boolean))];
+
+      if (documentIds.length > 0) {
+        params.push(documentIds);
+        whereClauses.push(`d.id = ANY($${params.length}::uuid[])`);
+      }
     }
 
     params.push(options.limit ?? DEFAULT_RETRIEVAL_LIMIT);
@@ -337,6 +426,28 @@ export class RagQuestionAnsweringService {
     }
 
     return 'No recent conversation.';
+  }
+
+  private buildRecentConversationContextFromTurns(
+    entries: StudyGpsDayChatMessage[],
+  ): string {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return 'No recent conversation.';
+    }
+
+    const conversationBlocks = entries
+      .slice(-8)
+      .map((entry) => {
+        const role = entry.role === 'assistant' ? 'Assistant' : 'User';
+        const content = this.truncateConversationText(entry.content);
+
+        return content ? `${role}: ${content}` : '';
+      })
+      .filter(Boolean);
+
+    return conversationBlocks.length > 0
+      ? conversationBlocks.join('\n')
+      : 'No recent conversation.';
   }
 
   private toVectorSql(embedding: number[]): string {

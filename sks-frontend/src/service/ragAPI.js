@@ -1,153 +1,79 @@
-import apiClient from '../services/apiClient.js';
+import apiClient from "../services/apiClient.js";
 
-const normalizeText = (value = '') => String(value).replace(/\s+/g, ' ').trim();
+const normalizeText = (value = "") => String(value).replace(/\s+/g, " ").trim();
 
-const truncateText = (value, maxLength) => {
-  const normalizedValue = normalizeText(value);
+const normalizeMindMapStudyNote = (note) => {
+  if (!note || typeof note !== "object") return null;
 
-  if (normalizedValue.length <= maxLength) {
-    return normalizedValue;
+  const overview = normalizeText(note.overview);
+  const explanation = normalizeText(note.explanation);
+  const keyPoints = Array.isArray(note.keyPoints)
+    ? note.keyPoints.map(normalizeText).filter(Boolean)
+    : Array.isArray(note.key_points)
+      ? note.key_points.map(normalizeText).filter(Boolean)
+      : [];
+  const studyFocus = normalizeText(note.studyFocus || note.study_focus);
+
+  if (!overview && !explanation && keyPoints.length === 0 && !studyFocus) {
+    return null;
   }
-
-  const roughSlice = normalizedValue.slice(0, maxLength).trimEnd();
-  const lastWordBoundary = roughSlice.lastIndexOf(' ');
-  const safeSlice =
-    lastWordBoundary > Math.floor(maxLength / 2)
-      ? roughSlice.slice(0, lastWordBoundary)
-      : roughSlice;
-
-  return `${safeSlice}...`;
-};
-
-const getNarrativeSummaryBody = (summary) => {
-  if (
-    summary?.format === 'narrative' &&
-    typeof summary?.body === 'string' &&
-    summary.body.trim()
-  ) {
-    return normalizeText(summary.body);
-  }
-
-  return '';
-};
-
-const getSummaryLeadText = (summary) =>
-  getNarrativeSummaryBody(summary) || normalizeText(summary?.overview || '');
-
-const buildMindMapInsightLabel = (point) => {
-  const normalizedPoint = normalizeText(point).replace(/^[-*]\s*/, '');
-  const condensedLabel = normalizedPoint.split(/\s+/).slice(0, 6).join(' ');
-
-  return truncateText(condensedLabel || normalizedPoint, 44);
-};
-
-const buildMindMapClusterSummary = (keyPoints, language) => {
-  if (!Array.isArray(keyPoints) || keyPoints.length === 0) {
-    return language === 'vi'
-      ? 'Khong co y chinh nao duoc trich xuat tu tai lieu.'
-      : 'No key ideas were extracted from the document.';
-  }
-
-  return language === 'vi'
-    ? `${keyPoints.length} y chinh duoc tong hop tu noi dung tai lieu.`
-    : `${keyPoints.length} key ideas synthesized from the document content.`;
-};
-
-const buildMindMapClusterPreviewSummary = (keyPoints, language) => {
-  const baseSummary = buildMindMapClusterSummary(keyPoints, language);
-  const previewPoints = (keyPoints || [])
-    .slice(0, 2)
-    .map((point) => normalizeText(point))
-    .filter(Boolean);
-
-  if (previewPoints.length === 0) {
-    return baseSummary;
-  }
-
-  const previewLabel = language === 'vi'
-    ? `Trong do noi bat: ${previewPoints.join(' ')}`
-    : `Most important ideas: ${previewPoints.join(' ')}`;
-
-  return truncateText(`${baseSummary} ${previewLabel}`, 320);
-};
-
-const buildSummaryText = (summary) => {
-  const narrativeBody = getNarrativeSummaryBody(summary);
-
-  if (narrativeBody) {
-    return [summary.title, narrativeBody].filter(Boolean).join('\n\n').trim();
-  }
-
-  const sections = [
-    summary.title,
-    summary.overview,
-    'Key points:',
-    ...(Array.isArray(summary.key_points)
-      ? summary.key_points.map((point) => `- ${point}`)
-      : []),
-    'Conclusion:',
-    summary.conclusion,
-  ];
-
-  return sections.join('\n').trim();
-};
-
-const buildSummaryMindMap = (summary, language = 'en') => {
-  const leadText = getSummaryLeadText(summary);
-  const overviewNode = {
-    id: 'overview',
-    label: language === 'vi' ? 'Tong quan' : 'Overview',
-    summary: truncateText(leadText, 420),
-    kind: 'overview',
-    children: [],
-  };
-  const insightNodes = (summary.key_points || []).map((point, index) => {
-    return {
-      id: `insight-${index + 1}`,
-      label: buildMindMapInsightLabel(point),
-      summary: truncateText(point, 320),
-      kind: 'insight',
-      children: [],
-    };
-  });
-  const clusterNode = {
-    id: 'key-ideas',
-    label: language === 'vi' ? 'Y chinh' : 'Key ideas',
-    summary: buildMindMapClusterPreviewSummary(
-      summary.key_points || [],
-      language,
-    ),
-    kind: 'cluster',
-    children: insightNodes,
-  };
-  const takeawayNode = {
-    id: 'takeaway',
-    label: language === 'vi' ? 'Ket luan' : 'Takeaway',
-    summary: truncateText(summary.conclusion, 320),
-    kind: 'takeaway',
-    children: [],
-  };
 
   return {
-    id: 'root',
-    label: truncateText(summary.title, 56),
-    summary: truncateText(leadText, 420),
-    kind: 'root',
-    children: [overviewNode, clusterNode, takeawayNode],
+    overview,
+    explanation,
+    keyPoints,
+    studyFocus,
   };
 };
 
-const buildMindMapFallbackResponse = (summary, requestedLanguage) => {
-  const resolvedLanguage = summary.language || requestedLanguage;
+const normalizeMindMapNode = (node, fallbackId = "root") => {
+  if (!node || typeof node !== "object") return null;
+
+  const label = normalizeText(node.label);
+  const summary = normalizeText(node.summary);
+  const children = Array.isArray(node.children)
+    ? node.children
+        .map((child, index) =>
+          normalizeMindMapNode(child, `${fallbackId}-${index + 1}`),
+        )
+        .filter(Boolean)
+    : [];
+
+  if (!label) return null;
 
   return {
-    message: 'Document mind map generated successfully',
-    mindMap: buildSummaryMindMap(summary, resolvedLanguage),
-    summary: buildSummaryText(summary),
-    language: resolvedLanguage,
-    generatedAt: summary.generatedAt || new Date().toISOString(),
-    cached: Boolean(summary.cached),
-    compatibilityMode: true,
+    ...node,
+    id: node.id || fallbackId,
+    label,
+    summary,
+    studyNote: normalizeMindMapStudyNote(node.studyNote),
+    children,
+  };
+};
+
+const normalizeMindMapArtifact = (artifact) => {
+  if (!artifact || typeof artifact !== "object") return null;
+
+  const root = normalizeMindMapNode(artifact.root, "root");
+
+  if (!root) return null;
+
+  return {
+    ...artifact,
+    root,
+  };
+};
+
+const normalizeMindMapResponse = (response) => {
+  const mindMap = normalizeMindMapNode(response?.mindMap, "root");
+  const versions = Array.isArray(response?.versions)
+    ? response.versions.map(normalizeMindMapArtifact).filter(Boolean)
+    : [];
+
+  return {
+    ...response,
+    mindMap,
+    versions,
   };
 };
 
@@ -159,58 +85,111 @@ const askDocument = async (documentId, question) => {
 };
 
 const getDocumentAskHistory = async (documentId) => {
-  const response = await apiClient.get(`/rag/documents/${documentId}/ask/history`);
+  const response = await apiClient.get(
+    `/rag/documents/${documentId}/ask/history`,
+  );
   return response.data;
 };
 
 const clearDocumentAskHistory = async (documentId) => {
-  const response = await apiClient.delete(`/rag/documents/${documentId}/ask/history`);
+  const response = await apiClient.delete(
+    `/rag/documents/${documentId}/ask/history`,
+  );
   return response.data;
 };
 
 const getDocumentSummary = async (
   documentId,
-  language = 'en',
+  language = "en",
   options = {},
 ) => {
-  const response = await apiClient.post(`/rag/documents/${documentId}/summary`, {
-    language,
-    forceRefresh: Boolean(options.forceRefresh),
-    slot: options.slot,
-    instruction:
-      typeof options.instruction === "string" ? options.instruction : undefined,
-  });
+  const response = await apiClient.post(
+    `/rag/documents/${documentId}/summary`,
+    {
+      language,
+      forceRefresh: Boolean(options.forceRefresh),
+      slot: options.slot,
+      instruction:
+        typeof options.instruction === "string"
+          ? options.instruction
+          : undefined,
+    },
+  );
   return response.data;
 };
 
 const getDocumentMindMap = async (
   documentId,
-  language = 'en',
+  language = "en",
   options = {},
 ) => {
-  try {
-    const response = await apiClient.post(`/rag/documents/${documentId}/mindmap`, {
+  const response = await apiClient.post(
+    `/rag/documents/${documentId}/mindmap`,
+    {
       language,
       forceRefresh: Boolean(options.forceRefresh),
-    });
-    return response.data;
-  } catch (error) {
-    if (error.response?.status !== 404) {
-      throw error;
-    }
+      slot: options.slot,
+      instruction:
+        typeof options.instruction === "string"
+          ? options.instruction
+          : undefined,
+    },
+  );
+  return normalizeMindMapResponse(response.data);
+};
 
-    const summary = await getDocumentSummary(documentId, language, {
-      forceRefresh: options.forceRefresh,
-    });
+const getStudyGpsPlan = async () => {
+  const response = await apiClient.get("/rag/study-gps");
+  return response.data;
+};
 
-    return buildMindMapFallbackResponse(summary, language);
-  }
+const generateStudyGpsPlan = async (payload) => {
+  const response = await apiClient.post("/rag/study-gps", payload);
+  return response.data;
+};
+
+const sendStudyGpsDayChat = async (payload) => {
+  const response = await apiClient.post("/rag/study-gps/day-chat", payload);
+  return response.data;
+};
+
+const startStudyGpsDayChat = async (day) => {
+  const response = await apiClient.post("/rag/study-gps/day-chat/start", {
+    day,
+  });
+  return response.data;
+};
+
+const getStudyGpsDayChatHistory = async (day) => {
+  const response = await apiClient.get(
+    `/rag/study-gps/day-chat/${day}/history`,
+  );
+  return response.data;
+};
+
+const clearStudyGpsDayChatHistory = async (day) => {
+  const response = await apiClient.delete(
+    `/rag/study-gps/day-chat/${day}/history`,
+  );
+  return response.data;
+};
+
+const clearStudyGpsPlan = async () => {
+  const response = await apiClient.delete("/rag/study-gps");
+  return response.data;
 };
 
 export {
   askDocument,
+  clearStudyGpsDayChatHistory,
+  clearStudyGpsPlan,
   clearDocumentAskHistory,
+  generateStudyGpsPlan,
   getDocumentAskHistory,
   getDocumentMindMap,
   getDocumentSummary,
+  getStudyGpsDayChatHistory,
+  getStudyGpsPlan,
+  sendStudyGpsDayChat,
+  startStudyGpsDayChat,
 };

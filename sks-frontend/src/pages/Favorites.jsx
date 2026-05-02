@@ -84,32 +84,32 @@ const Favorites = () => {
   return (
     <div className="mx-auto max-w-[1440px] animate-fade-in pb-12">
       {/* ═══ PREMIUM HERO HEADER ═══ */}
-      <div className="relative mb-12 overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-8 py-10 shadow-2xl">
+      <div className="relative mb-12 overflow-hidden rounded-3xl bg-white border border-slate-200 px-8 py-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
         {/* Mesh glow accents */}
-        <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-cyan-500/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-blue-500/15 blur-3xl" />
-        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-72 w-72 rounded-full bg-sky-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-cyan-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-blue-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-72 w-72 rounded-full bg-sky-500/5 blur-3xl" />
 
         <div className="relative z-10 flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
           <div className="flex-1">
             <div className="mb-2 flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-cyan-400 font-mono">
-                <span className="h-1.5 w-1.5 rounded-full bg-cyan-400"></span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-cyan-700 font-mono">
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-500"></span>
                 Curated Collection
               </span>
             </div>
-            <h1 className="text-4xl font-[1000] tracking-tight text-white sm:text-6xl">
-              Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-400">Favorites</span>
+            <h1 className="text-4xl font-[1000] tracking-tight text-slate-900 sm:text-6xl">
+              Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 to-blue-600">Favorites</span>
             </h1>
           </div>
 
-          <div className="flex shrink-0 items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-400 shadow-lg shadow-cyan-500/10">
+          <div className="flex shrink-0 items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50/80 p-5 backdrop-blur-xl">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-100 text-cyan-600 shadow-sm ring-1 ring-cyan-200">
               <StarIcon className="h-6 w-6" filled />
             </div>
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Priority Assets</p>
-              <p className="text-2xl font-black text-white leading-none mt-1">{documents.length}</p>
+              <p className="text-2xl font-black text-slate-900 leading-none mt-1">{documents.length}</p>
             </div>
           </div>
         </div>

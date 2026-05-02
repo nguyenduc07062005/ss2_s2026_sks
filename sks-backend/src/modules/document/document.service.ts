@@ -12,6 +12,7 @@ import { DocumentRepository } from 'src/database/repositories/document.repositor
 import { ChunkRepository } from 'src/database/repositories/chunks.repository';
 import { UserDocumentRepository } from 'src/database/repositories/user-document.repository';
 import { FolderRepository } from 'src/database/repositories/folder.repository';
+import { repairMojibakeText } from 'src/common/utils/text-encoding';
 
 import { DataSource, IsNull } from 'typeorm';
 
@@ -45,6 +46,30 @@ type UploadDocumentResult = {
 
 type UserDocumentAccessRow = {
   fileRef: string | null;
+};
+
+type DocumentStudyNote = {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+type DocumentStudyNoteCollection = {
+  activeNoteId: string | null;
+  notes: DocumentStudyNote[];
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+type UpdateDocumentNoteInput = {
+  noteId?: string | null;
+  title?: string | null;
+  content: string;
 };
 
 @Injectable()
@@ -182,8 +207,7 @@ export class DocumentService {
         );
     }
 
-    // Remove null bytes
-    text = text.split(String.fromCharCode(0)).join('');
+    text = repairMojibakeText(text).split(String.fromCharCode(0)).join('');
 
     if (!text.trim()) {
       throw new BadRequestException('Unable to extract text from file');
@@ -817,6 +841,144 @@ export class DocumentService {
     return this.toDocumentSummary(userDocument);
   }
 
+  async getDocumentNote(
+    documentId: string,
+    ownerId: string,
+  ): Promise<DocumentStudyNoteCollection> {
+    const userDocument =
+      await this.userDocumentRepository.findByUserAndDocument(
+        ownerId,
+        documentId,
+      );
+
+    if (!userDocument) {
+      throw new NotFoundException('Document not found or not owned by user');
+    }
+
+    return this.readStudyNotes(userDocument.extraAttributes);
+  }
+
+  async updateDocumentNote(
+    documentId: string,
+    ownerId: string,
+    input: UpdateDocumentNoteInput,
+  ): Promise<DocumentStudyNoteCollection> {
+    const userDocument =
+      await this.userDocumentRepository.findByUserAndDocument(
+        ownerId,
+        documentId,
+      );
+
+    if (!userDocument) {
+      throw new NotFoundException('Document not found or not owned by user');
+    }
+
+    const normalizedContent = (input.content ?? '').replace(/\r\n/g, '\n');
+    const updatedAt = new Date().toISOString();
+    const baseExtraAttributes =
+      userDocument.extraAttributes &&
+      typeof userDocument.extraAttributes === 'object' &&
+      !Array.isArray(userDocument.extraAttributes)
+        ? userDocument.extraAttributes
+        : {};
+    const currentCollection = this.readStudyNotes(baseExtraAttributes);
+    const normalizedNoteId =
+      typeof input.noteId === 'string' && input.noteId.trim()
+        ? input.noteId.trim().slice(0, 80)
+        : currentCollection.activeNoteId || this.createStudyNoteId();
+    const normalizedTitle =
+      typeof input.title === 'string' && input.title.trim()
+        ? input.title.trim().slice(0, 120)
+        : currentCollection.notes.find((note) => note.id === normalizedNoteId)
+            ?.title || 'Study Note';
+    const existingNote = currentCollection.notes.find(
+      (note) => note.id === normalizedNoteId,
+    );
+    const nextNote: DocumentStudyNote = {
+      id: normalizedNoteId,
+      title: normalizedTitle,
+      content: normalizedContent,
+      createdAt: existingNote?.createdAt || updatedAt,
+      updatedAt,
+    };
+    const nextNotes = [
+      nextNote,
+      ...currentCollection.notes.filter((note) => note.id !== normalizedNoteId),
+    ].slice(0, 20);
+    const nextExtraAttributes = {
+      ...baseExtraAttributes,
+      sksNotes: {
+        activeNoteId: normalizedNoteId,
+        items: nextNotes,
+      },
+      sksNote: {
+        content: normalizedContent,
+        updatedAt,
+      },
+    };
+
+    userDocument.extraAttributes = nextExtraAttributes;
+    await this.userDocumentRepository.getRepository().save(userDocument);
+
+    return this.readStudyNotes(nextExtraAttributes);
+  }
+
+  async deleteDocumentNote(
+    documentId: string,
+    ownerId: string,
+    noteId: string,
+  ): Promise<DocumentStudyNoteCollection> {
+    const userDocument =
+      await this.userDocumentRepository.findByUserAndDocument(
+        ownerId,
+        documentId,
+      );
+
+    if (!userDocument) {
+      throw new NotFoundException('Document not found or not owned by user');
+    }
+
+    const normalizedNoteId = (noteId ?? '').trim();
+
+    if (!normalizedNoteId) {
+      throw new BadRequestException('Note id is required');
+    }
+
+    const baseExtraAttributes =
+      userDocument.extraAttributes &&
+      typeof userDocument.extraAttributes === 'object' &&
+      !Array.isArray(userDocument.extraAttributes)
+        ? userDocument.extraAttributes
+        : {};
+    const currentCollection = this.readStudyNotes(baseExtraAttributes);
+    const remainingNotes = currentCollection.notes.filter(
+      (note) => note.id !== normalizedNoteId,
+    );
+    const nextNotes =
+      remainingNotes.length > 0 ? remainingNotes : [this.createEmptyStudyNote()];
+    const activeNote =
+      currentCollection.activeNoteId === normalizedNoteId
+        ? nextNotes[0]
+        : nextNotes.find((note) => note.id === currentCollection.activeNoteId) ||
+          nextNotes[0];
+    const nextExtraAttributes = {
+      ...baseExtraAttributes,
+      sksNotes: {
+        activeNoteId: activeNote.id,
+        items: nextNotes,
+      },
+      sksNote: {
+        content: activeNote.content,
+        updatedAt: activeNote.updatedAt,
+      },
+    };
+
+    userDocument.extraAttributes = nextExtraAttributes;
+    await this.userDocumentRepository.getRepository().save(userDocument);
+
+    return this.readStudyNotes(nextExtraAttributes);
+  }
+
   /**
    * Get document file path for serving
    * Supports both Document ID and UserDocument ID for robustness
@@ -899,6 +1061,171 @@ export class DocumentService {
       formattedFileSize: this.formatFileSize(userDoc.document?.fileSize || 0),
       folderId: userDoc.folder?.id || null,
       folderName: userDoc.folder?.name || 'Workspace',
+    };
+  }
+
+  private readStudyNotes(
+    extraAttributes: Record<string, any> | null | undefined,
+  ): DocumentStudyNoteCollection {
+    const safeAttributes =
+      extraAttributes &&
+      typeof extraAttributes === 'object' &&
+      !Array.isArray(extraAttributes)
+        ? extraAttributes
+        : {};
+    const rawCollection = safeAttributes.sksNotes;
+    const notes =
+      rawCollection &&
+      typeof rawCollection === 'object' &&
+      !Array.isArray(rawCollection) &&
+      Array.isArray((rawCollection as Record<string, unknown>).items)
+        ? ((rawCollection as Record<string, unknown>).items as unknown[])
+            .map((item, index) => this.normalizeStudyNoteItem(item, index))
+            .filter((note): note is DocumentStudyNote => Boolean(note))
+        : [];
+
+    if (notes.length > 0) {
+      const requestedActiveId =
+        typeof (rawCollection as Record<string, unknown>).activeNoteId ===
+          'string' &&
+        (rawCollection as Record<string, unknown>).activeNoteId
+          ? ((rawCollection as Record<string, unknown>).activeNoteId as string)
+          : notes[0].id;
+      const activeNote =
+        notes.find((note) => note.id === requestedActiveId) || notes[0];
+
+      return {
+        activeNoteId: activeNote.id,
+        notes,
+        ...activeNote,
+      };
+    }
+
+    const legacyNote = this.readLegacyStudyNote(safeAttributes.sksNote);
+
+    return {
+      activeNoteId: legacyNote.id,
+      notes: [legacyNote],
+      ...legacyNote,
+    };
+  }
+
+  private readLegacyStudyNote(rawNote: unknown): DocumentStudyNote {
+    if (!rawNote || typeof rawNote !== 'object' || Array.isArray(rawNote)) {
+      return this.createEmptyStudyNote();
+    }
+
+    const candidate = rawNote as Record<string, unknown>;
+
+    return {
+      id: 'default',
+      title: 'Study Note',
+      content:
+        typeof candidate.content === 'string'
+          ? candidate.content.replace(/\r\n/g, '\n')
+          : '',
+      createdAt:
+        typeof candidate.updatedAt === 'string' && candidate.updatedAt
+          ? candidate.updatedAt
+          : null,
+      updatedAt:
+        typeof candidate.updatedAt === 'string' && candidate.updatedAt
+          ? candidate.updatedAt
+          : null,
+    };
+  }
+
+  private normalizeStudyNoteItem(
+    value: unknown,
+    index: number,
+  ): DocumentStudyNote | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const candidate = value as Record<string, unknown>;
+    const fallbackId = index === 0 ? 'default' : `note-${index + 1}`;
+    const id =
+      typeof candidate.id === 'string' && candidate.id.trim()
+        ? candidate.id.trim().slice(0, 80)
+        : fallbackId;
+
+    return {
+      id,
+      title:
+        typeof candidate.title === 'string' && candidate.title.trim()
+          ? candidate.title.trim().slice(0, 120)
+          : index === 0
+            ? 'Study Note'
+            : `Study Note ${index + 1}`,
+      content:
+        typeof candidate.content === 'string'
+          ? candidate.content.replace(/\r\n/g, '\n')
+          : '',
+      createdAt:
+        typeof candidate.createdAt === 'string' && candidate.createdAt
+          ? candidate.createdAt
+          : typeof candidate.updatedAt === 'string' && candidate.updatedAt
+            ? candidate.updatedAt
+            : null,
+      updatedAt:
+        typeof candidate.updatedAt === 'string' && candidate.updatedAt
+          ? candidate.updatedAt
+          : null,
+    };
+  }
+
+  private createEmptyStudyNote(): DocumentStudyNote {
+    return {
+      id: 'default',
+      title: 'Study Note',
+      content: '',
+      createdAt: null,
+      updatedAt: null,
+    };
+  }
+
+  private createStudyNoteId(): string {
+    return `note-${crypto.randomUUID()}`;
+  }
+
+  private readStudyNote(
+    extraAttributes: Record<string, any> | null | undefined,
+  ): DocumentStudyNote {
+    const rawNote =
+      extraAttributes &&
+      typeof extraAttributes === 'object' &&
+      !Array.isArray(extraAttributes)
+        ? extraAttributes.sksNote
+        : null;
+
+    if (!rawNote || typeof rawNote !== 'object' || Array.isArray(rawNote)) {
+      return {
+        id: 'default',
+        title: 'Study Note',
+        content: '',
+        createdAt: null,
+        updatedAt: null,
+      };
+    }
+
+    const candidate = rawNote as Record<string, unknown>;
+
+    return {
+      id: 'default',
+      title: 'Study Note',
+      content:
+        typeof candidate.content === 'string'
+          ? candidate.content.replace(/\r\n/g, '\n')
+          : '',
+      createdAt:
+        typeof candidate.updatedAt === 'string' && candidate.updatedAt
+          ? candidate.updatedAt
+          : null,
+      updatedAt:
+        typeof candidate.updatedAt === 'string' && candidate.updatedAt
+          ? candidate.updatedAt
+          : null,
     };
   }
 

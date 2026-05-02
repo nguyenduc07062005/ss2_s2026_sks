@@ -6,10 +6,13 @@ import { useDocViewer } from "../context/DocViewerContext.jsx";
 import { getFilePresentation } from "../components/workspace/DocumentLibraryPanel.jsx";
 import {
   downloadDocumentFile,
+  deleteDocumentNote,
   fetchDocumentFile,
   getDocumentDetails,
+  getDocumentNote,
   getRelatedDocuments,
   openDocumentFile,
+  saveDocumentNote,
   toggleFavorite,
 } from "../service/documentAPI.js";
 import { rememberRecentDocument } from "../utils/recentDocuments.js";
@@ -341,6 +344,24 @@ const HistoryIcon = ({ className = "h-5 w-5" }) => (
   </svg>
 );
 
+const NoteIcon = ({ className = "h-5 w-5" }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    className={className}
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M5.25 3.5h7.5A2.25 2.25 0 0 1 15 5.75v8.5a2.25 2.25 0 0 1-2.25 2.25h-7.5A2.25 2.25 0 0 1 3 14.25v-8.5A2.25 2.25 0 0 1 5.25 3.5Z"
+    />
+    <path strokeLinecap="round" d="M6.5 7h5.5M6.5 10h6.5M6.5 13h4" />
+  </svg>
+);
+
 const ClockIcon = ({ className = "h-4 w-4" }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -404,6 +425,7 @@ const AI_TABS = [
   { id: "summary", label: "Summary", Icon: SparklesIcon },
   { id: "mindmap", label: "Mind Map", Icon: MindMapIcon },
   { id: "ask", label: "Ask AI", Icon: ChatBubbleIcon },
+  { id: "note", label: "SKS Note", Icon: NoteIcon },
   { id: "related", label: "Related", Icon: ExternalLinkIcon },
 ];
 
@@ -438,6 +460,50 @@ const resolveSummaryVersion = (summaryData, preferredSlot) => {
   return versions[0] || summaryData || null;
 };
 
+const getMindMapVersions = (mindMapData) =>
+  Array.isArray(mindMapData?.versions) ? mindMapData.versions : [];
+
+const normalizeMindMapVersionForView = (version) => {
+  if (!version) return null;
+
+  return {
+    ...version,
+    mindMap: version.mindMap || version.root || null,
+    language: version.language || version.summaryLanguage,
+    generatedAt: version.generatedAt || "",
+  };
+};
+
+const resolveMindMapVersion = (mindMapData, preferredSlot) => {
+  const versions = getMindMapVersions(mindMapData).map(
+    normalizeMindMapVersionForView,
+  );
+
+  if (preferredSlot) {
+    const preferredVersion = versions.find((item) => item?.slot === preferredSlot);
+
+    if (preferredVersion) {
+      return preferredVersion;
+    }
+  }
+
+  const selectedVersion = versions.find((item) => item?.slot === mindMapData?.slot);
+
+  if (selectedVersion) {
+    return selectedVersion;
+  }
+
+  const activeVersion = versions.find(
+    (item) => item?.slot === mindMapData?.activeSlot,
+  );
+
+  if (activeVersion) {
+    return activeVersion;
+  }
+
+  return normalizeMindMapVersionForView(mindMapData);
+};
+
 const getNarrativeSummaryBody = (summaryVersion) => {
   if (
     summaryVersion?.format === "narrative" &&
@@ -470,6 +536,71 @@ const formatSummaryHistoryTimestamp = (value) => {
   });
 };
 
+const createClientNoteId = () => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `note-${crypto.randomUUID()}`;
+  }
+
+  return `note-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+};
+
+const normalizeDocumentNotePayload = (note = {}) => {
+  const rawNotes = Array.isArray(note.notes) ? note.notes : [];
+  const notes = rawNotes
+    .map((item, index) => {
+      const id =
+        typeof item?.id === "string" && item.id.trim()
+          ? item.id.trim()
+          : index === 0
+            ? "default"
+            : `note-${index + 1}`;
+      const title =
+        typeof item?.title === "string" && item.title.trim()
+          ? item.title.trim()
+          : index === 0
+            ? "Study Note"
+            : `Study Note ${index + 1}`;
+      const content = typeof item?.content === "string" ? item.content : "";
+
+      return {
+        id,
+        title,
+        content,
+        createdAt: item?.createdAt || null,
+        updatedAt: item?.updatedAt || null,
+      };
+    })
+    .filter((item) => item.id);
+
+  if (notes.length === 0) {
+    notes.push({
+      id: "default",
+      title: typeof note.title === "string" && note.title.trim() ? note.title.trim() : "Study Note",
+      content: typeof note.content === "string" ? note.content : "",
+      createdAt: note.createdAt || note.updatedAt || null,
+      updatedAt: note.updatedAt || null,
+    });
+  }
+
+  const activeNoteId =
+    typeof note.activeNoteId === "string" && note.activeNoteId.trim()
+      ? note.activeNoteId.trim()
+      : typeof note.id === "string" && note.id.trim()
+        ? note.id.trim()
+        : notes[0].id;
+  const activeNote = notes.find((item) => item.id === activeNoteId) || notes[0];
+
+  return {
+    notes,
+    activeNoteId: activeNote.id,
+    title: activeNote.title,
+    savedTitle: activeNote.title,
+    content: activeNote.content,
+    savedContent: activeNote.content,
+    updatedAt: activeNote.updatedAt || null,
+  };
+};
+
 const findMindMapNodeById = (node, targetId) => {
   if (!node || !targetId) {
     return null;
@@ -488,6 +619,94 @@ const findMindMapNodeById = (node, targetId) => {
   }
 
   return null;
+};
+
+const findMindMapNodePathById = (node, targetId, path = []) => {
+  if (!node || !targetId) {
+    return [];
+  }
+
+  const nextPath = [...path, node];
+
+  if (node.id === targetId) {
+    return nextPath;
+  }
+
+  for (const child of node.children || []) {
+    const match = findMindMapNodePathById(child, targetId, nextPath);
+
+    if (match.length > 0) {
+      return match;
+    }
+  }
+
+  return [];
+};
+
+const escapeRegExp = (value) =>
+  String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const stripMindMapSummaryLeadIn = (summary, label) => {
+  let text = String(summary || "").replace(/\s+/g, " ").trim();
+  const cleanLabel = String(label || "").replace(/\s+/g, " ").trim();
+
+  if (!text) {
+    return "";
+  }
+
+  const labelPattern = cleanLabel ? escapeRegExp(cleanLabel) : ".+?";
+  const leadInPatterns = [
+    new RegExp(
+      `^Nội dung này tập trung vào\\s+${labelPattern}\\s*:?\\s*`,
+      "i",
+    ),
+    new RegExp(
+      `^Nút này giải thích\\s+${labelPattern}\\.?\\s*Trong tài liệu, ý này được đặt trong mạch:\\s*`,
+      "i",
+    ),
+    new RegExp(
+      `^Ý này nhấn mạnh\\s+${labelPattern}\\.?\\s*Trong tài liệu, nội dung này được đặt trong bối cảnh:\\s*`,
+      "i",
+    ),
+    new RegExp(
+      `^This node focuses on\\s+${labelPattern}\\s*:?\\s*`,
+      "i",
+    ),
+    new RegExp(
+      `^This node explains\\s+${labelPattern}\\.?\\s*In the document, it appears in this context:\\s*`,
+      "i",
+    ),
+    new RegExp(
+      `^This node highlights\\s+${labelPattern}\\.?\\s*In the document, it appears in this context:\\s*`,
+      "i",
+    ),
+  ];
+
+  for (const pattern of leadInPatterns) {
+    text = text.replace(pattern, "").trim();
+  }
+
+  return text;
+};
+
+const lowercaseFirstLetter = (value) => {
+  const text = String(value || "").trim();
+
+  if (!text) {
+    return "";
+  }
+
+  return `${text.charAt(0).toLocaleLowerCase("vi-VN")}${text.slice(1)}`;
+};
+
+const ensureSentence = (value) => {
+  const text = String(value || "").trim();
+
+  if (!text) {
+    return "";
+  }
+
+  return /[.!?。]$/.test(text) ? text : `${text}.`;
 };
 
 const isMindMapNodeVisible = (
@@ -636,7 +855,7 @@ const DocumentViewer = () => {
     error: "",
     data: null,
   });
-  const [selectedLanguage, setSelectedLanguage] = useState("vi");
+  const [selectedLanguage, setSelectedLanguage] = useState("en");
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [isSummaryHistoryOpen, setIsSummaryHistoryOpen] = useState(false);
   const [isSummaryRefreshConfirmOpen, setIsSummaryRefreshConfirmOpen] =
@@ -645,8 +864,12 @@ const DocumentViewer = () => {
   const [summaryInstructionError, setSummaryInstructionError] = useState("");
   const [selectedSummarySlot, setSelectedSummarySlot] = useState(null);
   const [isMindMapModalOpen, setIsMindMapModalOpen] = useState(false);
+  const [isMindMapHistoryOpen, setIsMindMapHistoryOpen] = useState(false);
   const [isMindMapRefreshConfirmOpen, setIsMindMapRefreshConfirmOpen] =
     useState(false);
+  const [mindMapInstructionDraft, setMindMapInstructionDraft] = useState("");
+  const [mindMapInstructionError, setMindMapInstructionError] = useState("");
+  const [selectedMindMapSlot, setSelectedMindMapSlot] = useState(null);
   const [mindMapState, setMindMapState] = useState({
     loading: false,
     error: "",
@@ -668,6 +891,22 @@ const DocumentViewer = () => {
     error: "",
     pendingQuestion: "",
   });
+  const [noteState, setNoteState] = useState({
+    loading: false,
+    saving: false,
+    error: "",
+    notes: [],
+    activeNoteId: null,
+    title: "Study Note",
+    savedTitle: "Study Note",
+    content: "",
+    savedContent: "",
+    updatedAt: null,
+    loaded: false,
+  });
+  const [isNoteHistoryOpen, setIsNoteHistoryOpen] = useState(false);
+  const [isNoteTitleModalOpen, setIsNoteTitleModalOpen] = useState(false);
+  const [noteTitleDraft, setNoteTitleDraft] = useState("");
 
   const chatInputRef = useRef(null);
   const askThreadRef = useRef(null);
@@ -780,7 +1019,11 @@ const DocumentViewer = () => {
     setSummaryInstructionError("");
     setSelectedSummarySlot(null);
     setIsMindMapModalOpen(false);
+    setIsMindMapHistoryOpen(false);
     setIsMindMapRefreshConfirmOpen(false);
+    setMindMapInstructionDraft("");
+    setMindMapInstructionError("");
+    setSelectedMindMapSlot(null);
     setMindMapState({ loading: false, error: "", data: null });
     setSelectedMindMapNodeId(null);
     setMindMapViewMode("explore");
@@ -794,6 +1037,22 @@ const DocumentViewer = () => {
       clearing: false,
     });
     setAskState({ loading: false, error: "", pendingQuestion: "" });
+    setNoteState({
+      loading: false,
+      saving: false,
+      error: "",
+      notes: [],
+      activeNoteId: null,
+      title: "Study Note",
+      savedTitle: "Study Note",
+      content: "",
+      savedContent: "",
+      updatedAt: null,
+      loaded: false,
+    });
+    setIsNoteHistoryOpen(false);
+    setIsNoteTitleModalOpen(false);
+    setNoteTitleDraft("");
   }, [documentId]);
 
   /* AI Logic */
@@ -864,26 +1123,32 @@ const DocumentViewer = () => {
 
   const loadMindMap = useCallback(
     async (language = selectedLanguage, options = {}) => {
-      if (!documentId || mindMapState.loading) return;
+      if (!documentId || mindMapState.loading) return false;
       try {
         const targetLanguage = language || selectedLanguage;
         const forceRefresh = Boolean(options.forceRefresh);
+        const targetSlot = options.slot || undefined;
+        const instruction =
+          typeof options.instruction === "string" ? options.instruction : undefined;
         setSelectedLanguage(targetLanguage);
         setMindMapState((s) => ({ ...s, loading: true, error: "" }));
         const result = await getDocumentMindMap(documentId, targetLanguage, {
           forceRefresh,
+          slot: targetSlot,
+          instruction,
         });
         setMindMapState({
           loading: false,
           error: "",
-          data: {
-            mindMap: result.mindMap || null,
-            summary: result.summary || "",
-            language: result.language || targetLanguage,
-            generatedAt: result.generatedAt || "",
-            cached: Boolean(result.cached),
-          },
+          data: result,
         });
+        setSelectedMindMapSlot(
+          result.slot || result.activeSlot || targetSlot || null,
+        );
+        setMindMapInstructionError("");
+        if (forceRefresh) {
+          setMindMapInstructionDraft("");
+        }
         const rootId = result.mindMap?.id || "root";
         const defaultExpandedIds = collectMindMapExpandedIds(
           result.mindMap,
@@ -898,18 +1163,49 @@ const DocumentViewer = () => {
               ? [rootId]
               : [],
         );
+        return true;
       } catch (err) {
-        setMindMapState({
+        const errorMessage =
+          err.response?.data?.message || "AI could not build this mind map.";
+        setMindMapState((current) => ({
           loading: false,
-          error:
-            err.response?.data?.message || "AI could not build this mind map.",
-          data: null,
-        });
-        setSelectedMindMapNodeId(null);
-        setExpandedMindMapNodeIds([]);
+          error: current.data && options.forceRefresh ? "" : errorMessage,
+          data: current.data,
+        }));
+        if (options.forceRefresh) {
+          setMindMapInstructionError(errorMessage);
+        } else {
+          setSelectedMindMapNodeId(null);
+          setExpandedMindMapNodeIds([]);
+        }
+        return false;
       }
     },
     [documentId, mindMapState.loading, selectedLanguage],
+  );
+
+  const mindMapVersions = useMemo(
+    () => getMindMapVersions(mindMapState.data),
+    [mindMapState.data],
+  );
+  const activeMindMapVersion = useMemo(
+    () => resolveMindMapVersion(mindMapState.data, selectedMindMapSlot),
+    [selectedMindMapSlot, mindMapState.data],
+  );
+  const activeMindMapRoot = activeMindMapVersion?.mindMap || null;
+  const defaultMindMapVersion = useMemo(
+    () =>
+      mindMapVersions
+        .map(normalizeMindMapVersionForView)
+        .find((item) => item?.slot === "default") || null,
+    [mindMapVersions],
+  );
+  const mindMapHistoryVersions = useMemo(
+    () =>
+      mindMapVersions
+        .map(normalizeMindMapVersionForView)
+        .filter((item) => item?.slot === "custom"),
+    [mindMapVersions],
   );
 
   const loadAskHistory = useCallback(async () => {
@@ -939,6 +1235,276 @@ const DocumentViewer = () => {
       }));
     }
   }, [documentId, askHistoryState.loading]);
+
+  const loadDocumentNote = useCallback(async () => {
+    if (!documentId || noteState.loading || noteState.loaded) return;
+
+    try {
+      setNoteState((current) => ({
+        ...current,
+        loading: true,
+        error: "",
+      }));
+      const result = await getDocumentNote(documentId);
+      const normalizedNote = normalizeDocumentNotePayload(result.note || {});
+
+      setNoteState({
+        loading: false,
+        saving: false,
+        error: "",
+        ...normalizedNote,
+        loaded: true,
+      });
+    } catch (err) {
+      setNoteState((current) => ({
+        ...current,
+        loading: false,
+        error: err.response?.data?.message || "Could not load SKS Note.",
+        loaded: true,
+      }));
+    }
+  }, [documentId, noteState.loaded, noteState.loading]);
+
+  const handleSaveNote = useCallback(async () => {
+    if (!documentId || noteState.saving) return;
+
+    const needsTitle =
+      !noteState.savedTitle ||
+      !noteState.title ||
+      noteState.title.trim().toLowerCase() === "untitled note";
+
+    if (needsTitle) {
+      setNoteTitleDraft(
+        noteState.title && noteState.title !== "Untitled note"
+          ? noteState.title
+          : "",
+      );
+      setIsNoteTitleModalOpen(true);
+      return;
+    }
+
+    try {
+      setNoteState((current) => ({
+        ...current,
+        saving: true,
+        error: "",
+      }));
+      const result = await saveDocumentNote(documentId, noteState.content, {
+        noteId: noteState.activeNoteId,
+        title: noteState.title,
+      });
+      const normalizedNote = normalizeDocumentNotePayload(result.note || {});
+
+      setNoteState((current) => ({
+        ...current,
+        saving: false,
+        error: "",
+        ...normalizedNote,
+        loaded: true,
+      }));
+    } catch (err) {
+      setNoteState((current) => ({
+        ...current,
+        saving: false,
+        error: err.response?.data?.message || "Could not save SKS Note.",
+      }));
+    }
+  }, [
+    documentId,
+    noteState.activeNoteId,
+    noteState.content,
+    noteState.saving,
+    noteState.savedTitle,
+    noteState.title,
+  ]);
+
+  const commitSaveNoteWithTitle = useCallback(
+    async (title) => {
+      if (!documentId || noteState.saving) return;
+
+      const normalizedTitle = title.trim();
+
+      if (!normalizedTitle) {
+        setNoteState((current) => ({
+          ...current,
+          error: "Please enter a note title before saving.",
+        }));
+        return;
+      }
+
+      try {
+        setNoteState((current) => ({
+          ...current,
+          saving: true,
+          error: "",
+          title: normalizedTitle,
+        }));
+        const result = await saveDocumentNote(documentId, noteState.content, {
+          noteId: noteState.activeNoteId,
+          title: normalizedTitle,
+        });
+        const normalizedNote = normalizeDocumentNotePayload(result.note || {});
+
+        setNoteState((current) => ({
+          ...current,
+          saving: false,
+          error: "",
+          ...normalizedNote,
+          loaded: true,
+        }));
+        setIsNoteTitleModalOpen(false);
+        setNoteTitleDraft("");
+      } catch (err) {
+        setNoteState((current) => ({
+          ...current,
+          saving: false,
+          error: err.response?.data?.message || "Could not save SKS Note.",
+        }));
+      }
+    },
+    [
+      documentId,
+      noteState.activeNoteId,
+      noteState.content,
+      noteState.saving,
+    ],
+  );
+
+  const handleSelectNote = useCallback((noteId) => {
+    setNoteState((current) => {
+      if (
+        current.content !== current.savedContent ||
+        current.title !== current.savedTitle
+      ) {
+        const shouldDiscard = window.confirm(
+          "You have unsaved changes in this note. Switch notes and discard them?",
+        );
+
+        if (!shouldDiscard) {
+          return current;
+        }
+      }
+
+      const nextNote = current.notes.find((note) => note.id === noteId);
+
+      if (!nextNote) {
+        return current;
+      }
+
+      return {
+        ...current,
+        activeNoteId: nextNote.id,
+        title: nextNote.title,
+        savedTitle: nextNote.title,
+        content: nextNote.content,
+        savedContent: nextNote.content,
+        updatedAt: nextNote.updatedAt || null,
+        error: "",
+      };
+    });
+  }, []);
+
+  const handleCreateNote = useCallback(() => {
+    setNoteState((current) => {
+      const now = new Date().toISOString();
+      const nextIndex = current.notes.length + 1;
+      const nextNote = {
+        id: createClientNoteId(),
+        title: "Untitled note",
+        content: "",
+        createdAt: now,
+        updatedAt: null,
+      };
+
+      return {
+        ...current,
+        notes: [nextNote, ...current.notes],
+        activeNoteId: nextNote.id,
+        title: nextNote.title,
+        savedTitle: "",
+        content: "",
+        savedContent: "",
+        updatedAt: null,
+        error: "",
+      };
+    });
+  }, []);
+
+  const handleRenameNote = useCallback(
+    async (noteId, title) => {
+      if (!documentId || noteState.saving) return;
+
+      const targetNote = noteState.notes.find((note) => note.id === noteId);
+      const normalizedTitle = title.trim();
+
+      if (!targetNote || !normalizedTitle) return;
+
+      try {
+        setNoteState((current) => ({ ...current, saving: true, error: "" }));
+        const contentToSave =
+          noteId === noteState.activeNoteId
+            ? noteState.content
+            : targetNote.content;
+        const result = await saveDocumentNote(documentId, contentToSave, {
+          noteId,
+          title: normalizedTitle,
+        });
+        const normalizedNote = normalizeDocumentNotePayload(result.note || {});
+
+        setNoteState((current) => ({
+          ...current,
+          saving: false,
+          error: "",
+          ...normalizedNote,
+          loaded: true,
+        }));
+      } catch (err) {
+        setNoteState((current) => ({
+          ...current,
+          saving: false,
+          error: err.response?.data?.message || "Could not rename note.",
+        }));
+      }
+    },
+    [
+      documentId,
+      noteState.activeNoteId,
+      noteState.content,
+      noteState.notes,
+      noteState.saving,
+    ],
+  );
+
+  const handleDeleteNote = useCallback(
+    async (noteId) => {
+      if (!documentId || noteState.saving) return;
+
+      const shouldDelete = window.confirm("Delete this note?");
+
+      if (!shouldDelete) return;
+
+      try {
+        setNoteState((current) => ({ ...current, saving: true, error: "" }));
+        const result = await deleteDocumentNote(documentId, noteId);
+        const normalizedNote = normalizeDocumentNotePayload(result.note || {});
+
+        setNoteState((current) => ({
+          ...current,
+          saving: false,
+          error: "",
+          ...normalizedNote,
+          loaded: true,
+        }));
+      } catch (err) {
+        setNoteState((current) => ({
+          ...current,
+          saving: false,
+          error: err.response?.data?.message || "Could not delete note.",
+        }));
+      }
+    },
+    [documentId, noteState.saving],
+  );
 
   const handleClearAskHistory = useCallback(async () => {
     if (!documentId || askHistoryState.clearing) return;
@@ -1020,6 +1586,19 @@ const DocumentViewer = () => {
   ]);
 
   useEffect(() => {
+    if (activeTab !== "note" || noteState.loaded || noteState.loading) {
+      return;
+    }
+
+    void loadDocumentNote();
+  }, [
+    activeTab,
+    loadDocumentNote,
+    noteState.loaded,
+    noteState.loading,
+  ]);
+
+  useEffect(() => {
     if (!askThreadRef.current) {
       return;
     }
@@ -1065,11 +1644,28 @@ const DocumentViewer = () => {
 
   const selectedMindMapNode = useMemo(
     () =>
-      findMindMapNodeById(mindMapState.data?.mindMap, selectedMindMapNodeId),
-    [mindMapState.data?.mindMap, selectedMindMapNodeId],
+      findMindMapNodeById(activeMindMapRoot, selectedMindMapNodeId),
+    [activeMindMapRoot, selectedMindMapNodeId],
   );
 
-  const rootMindMapId = mindMapState.data?.mindMap?.id || null;
+  const selectedMindMapNodePath = useMemo(
+    () => findMindMapNodePathById(activeMindMapRoot, selectedMindMapNodeId),
+    [activeMindMapRoot, selectedMindMapNodeId],
+  );
+
+  const selectedMindMapParentNode =
+    selectedMindMapNodePath.length > 1
+      ? selectedMindMapNodePath[selectedMindMapNodePath.length - 2]
+      : null;
+  const selectedMindMapSiblingNodes = useMemo(
+    () =>
+      selectedMindMapParentNode?.children?.filter(
+        (node) => node.id !== selectedMindMapNode?.id,
+      ) || [],
+    [selectedMindMapParentNode, selectedMindMapNode?.id],
+  );
+
+  const rootMindMapId = activeMindMapRoot?.id || null;
 
   const expandedMindMapNodeIdSet = useMemo(
     () => new Set(expandedMindMapNodeIds),
@@ -1091,7 +1687,7 @@ const DocumentViewer = () => {
       }
 
       const targetNode = findMindMapNodeById(
-        mindMapState.data?.mindMap,
+        activeMindMapRoot,
         nodeId,
       );
 
@@ -1117,7 +1713,7 @@ const DocumentViewer = () => {
       );
     },
     [
-      mindMapState.data?.mindMap,
+      activeMindMapRoot,
       expandedMindMapNodeIds,
       mindMapViewMode,
       selectedMindMapNodeId,
@@ -1132,7 +1728,7 @@ const DocumentViewer = () => {
         const nextExpandedIds =
           expandedMindMapNodeIds.length > 0
             ? expandedMindMapNodeIds
-            : collectMindMapExpandedIds(mindMapState.data?.mindMap, 1);
+            : collectMindMapExpandedIds(activeMindMapRoot, 1);
 
         if (expandedMindMapNodeIds.length === 0 && rootMindMapId) {
           setExpandedMindMapNodeIds(
@@ -1143,7 +1739,7 @@ const DocumentViewer = () => {
         if (
           selectedMindMapNodeId &&
           !isMindMapNodeVisible(
-            mindMapState.data?.mindMap,
+            activeMindMapRoot,
             selectedMindMapNodeId,
             new Set(nextExpandedIds),
             false,
@@ -1155,7 +1751,7 @@ const DocumentViewer = () => {
       }
     },
     [
-      mindMapState.data?.mindMap,
+      activeMindMapRoot,
       expandedMindMapNodeIds,
       rootMindMapId,
       selectedMindMapNodeId,
@@ -1164,14 +1760,14 @@ const DocumentViewer = () => {
 
   const handleMindMapLanguageChange = useCallback(
     (language) => {
-      if (mindMapState.data?.mindMap) {
+      if (activeMindMapRoot) {
         void loadMindMap(language);
         return;
       }
 
       setSelectedLanguage(language);
     },
-    [mindMapState.data?.mindMap, loadMindMap],
+    [activeMindMapRoot, loadMindMap],
   );
 
   const handleSummarySlotChange = useCallback(
@@ -1183,6 +1779,31 @@ const DocumentViewer = () => {
       setSelectedSummarySlot(slot);
     },
     [summaryVersions],
+  );
+
+  const handleMindMapSlotChange = useCallback(
+    (slot) => {
+      if (!mindMapVersions.some((item) => item.slot === slot)) {
+        return;
+      }
+
+      setSelectedMindMapSlot(slot);
+      const nextVersion = resolveMindMapVersion(mindMapState.data, slot);
+      const nextRoot = nextVersion?.mindMap || null;
+      const rootId = nextRoot?.id || "root";
+      const defaultExpandedIds = collectMindMapExpandedIds(nextRoot, 1);
+
+      setSelectedMindMapNodeId(rootId);
+      setMindMapViewMode("explore");
+      setExpandedMindMapNodeIds(
+        defaultExpandedIds.length > 0
+          ? defaultExpandedIds
+          : rootId
+            ? [rootId]
+            : [],
+      );
+    },
+    [mindMapState.data, mindMapVersions],
   );
 
   /* Tab Components */
@@ -1220,7 +1841,7 @@ const DocumentViewer = () => {
           </div>
 
           <button
-            onClick={() => void loadSummary()}
+            onClick={() => void loadSummary(selectedLanguage)}
             className="group relative flex h-14 w-full items-center justify-center gap-4 overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 px-8 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-cyan-500/20 transition-all hover:scale-[1.02] active:scale-95"
           >
             <span>Generate Summary</span>
@@ -1427,14 +2048,15 @@ const DocumentViewer = () => {
       return null;
     }
 
-    const detailLanguage = mindMapState.data?.language || selectedLanguage;
+    const detailLanguage =
+      activeMindMapVersion?.language || mindMapState.data?.language || selectedLanguage;
     const isVietnamese = detailLanguage === "vi";
     const childCount = selectedMindMapNode.children?.length || 0;
     const summaryText =
       selectedMindMapNode.summary ||
       (childCount > 0
         ? isVietnamese
-          ? "Phan nay gom cac y lien quan de ban tiep tuc theo doi trong tai lieu."
+          ? "Phần này gom các ý liên quan để bạn tiếp tục theo dõi trong tài liệu."
           : "This branch groups the next ideas in the document."
         : "");
 
@@ -1449,10 +2071,104 @@ const DocumentViewer = () => {
     const childPreviewLimit = isCompact ? 3 : 6;
     const childPreviewNodes =
       selectedMindMapNode.children?.slice(0, childPreviewLimit) || [];
+    const childStudyNotes = childPreviewNodes
+      .map((childNode) => ({
+        id: childNode.id,
+        label: childNode.label || "",
+        summary:
+          childNode.summary && childNode.summary !== childNode.label
+            ? childNode.summary
+            : "",
+      }))
+      .filter((childNode) => childNode.label || childNode.summary);
+    const detailedNodeNote = selectedMindMapNode.studyNote || null;
+    const isLoadingDetailedNodeNote = false;
+    const detailedNodeNoteKeyPoints = Array.isArray(detailedNodeNote?.keyPoints)
+      ? detailedNodeNote.keyPoints.filter(Boolean)
+      : [];
+    const cleanedSummaryText =
+      stripMindMapSummaryLeadIn(
+        detailedNodeNote?.overview || summaryText,
+        selectedMindMapNode.label,
+      ) ||
+      detailedNodeNote?.overview ||
+      summaryText;
+    const meaningSourceText = cleanedSummaryText || summaryText;
+    const meaningStartsWithLabel =
+      selectedMindMapNode.label &&
+      new RegExp(`^${escapeRegExp(selectedMindMapNode.label)}\\b`, "i").test(
+        meaningSourceText,
+      );
+    const meaningDetailText = meaningSourceText
+      ? meaningStartsWithLabel
+        ? ensureSentence(meaningSourceText)
+        : isVietnamese
+        ? ensureSentence(
+            `${selectedMindMapNode.label} là ${lowercaseFirstLetter(
+              meaningSourceText.replace(/[.!?。]\s*$/, ""),
+            )}`,
+          )
+        : ensureSentence(
+            `${selectedMindMapNode.label} means ${lowercaseFirstLetter(
+              meaningSourceText.replace(/[.!?。]\s*$/, ""),
+            )}`,
+          )
+      : isVietnamese
+        ? `Mục này chưa có đủ dữ liệu giải thích riêng cho "${selectedMindMapNode.label}".`
+        : `This item does not yet have enough source detail for "${selectedMindMapNode.label}".`;
+    const pathLabels = selectedMindMapNodePath
+      .map((node) => node?.label)
+      .filter(Boolean);
+    const contextText =
+      selectedMindMapParentNode?.label && selectedMindMapParentNode.id !== selectedMindMapNode.id
+        ? isVietnamese
+          ? `Trong sơ đồ, ý này thuộc nhánh "${selectedMindMapParentNode.label}", nên nó đang làm rõ một phần của chủ đề đó.`
+          : `In this map, it sits under "${selectedMindMapParentNode.label}", so it explains one part of that parent idea.`
+        : pathLabels.length > 1
+          ? isVietnamese
+            ? `Mạch liên kết: ${pathLabels.join(" → ")}.`
+            : `Map path: ${pathLabels.join(" → ")}.`
+          : "";
+    const detailedExplanation = detailedNodeNote?.explanation
+      ? stripMindMapSummaryLeadIn(
+          detailedNodeNote.explanation,
+          selectedMindMapNode.label,
+        ) || detailedNodeNote.explanation
+      : "";
+    const siblingStudyNotes =
+      selectedMindMapSiblingNodes
+        .slice(0, 3)
+        .map((node) => ({
+          id: node.id,
+          label: node.label || "",
+          summary:
+            node.summary && node.summary !== node.label
+              ? stripMindMapSummaryLeadIn(node.summary, node.label)
+              : "",
+        }))
+        .filter((node) => node.label || node.summary);
+    const relatedStudyNotes =
+      detailedNodeNoteKeyPoints.length > 0
+        ? []
+        : childStudyNotes.length > 0
+          ? childStudyNotes
+          : siblingStudyNotes;
+    const relatedStudyTitle =
+      childStudyNotes.length > 0
+        ? isVietnamese
+          ? "Ý nhỏ bên trong"
+          : "Inside This Idea"
+        : isVietnamese
+          ? "Ý liên quan cùng nhánh"
+          : "Related Ideas";
+    const studyDetailParagraphs = [
+      detailedExplanation || meaningDetailText,
+      detailedNodeNote?.studyFocus || contextText,
+    ].filter(Boolean);
     const displaySummaryText =
-      isCompact && summaryText.length > 220
-        ? `${summaryText.slice(0, 220).trimEnd()}...`
-        : summaryText;
+      isCompact && meaningSourceText.length > 220
+        ? `${meaningSourceText.slice(0, 220).trimEnd()}...`
+        : meaningSourceText;
     const hiddenBranchCount = Math.max(
       childCount - childPreviewNodes.length,
       0,
@@ -1460,13 +2176,13 @@ const DocumentViewer = () => {
     const branchCountLabel =
       childCount > 0
         ? isVietnamese
-          ? `${childCount} nhanh`
+          ? `${childCount} nhánh`
           : `${childCount} ${childCount === 1 ? "branch" : "branches"}`
         : null;
     const branchHint =
       childCount > 0
         ? isVietnamese
-          ? "Chon mot nhanh ben duoi de xem tiep."
+          ? "Chọn một nhánh bên dưới để xem tiếp."
           : "Choose a branch below to continue."
         : null;
 
@@ -1519,6 +2235,94 @@ const DocumentViewer = () => {
             </section>
           ) : null}
 
+          <section className={isCompact ? "space-y-1.5" : "space-y-2"}>
+            <p
+              className={`font-black uppercase tracking-[0.2em] text-slate-400 ${isCompact ? "text-[8px]" : "text-[9px]"}`}
+            >
+              Study Detail
+            </p>
+            <div
+              className={`border border-cyan-100/80 bg-cyan-50/65 ${isCompact ? "rounded-[16px] p-3" : "rounded-[20px] p-4"}`}
+            >
+              {isLoadingDetailedNodeNote ? (
+                <div className="space-y-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-500">
+                    {isVietnamese
+                      ? "Đang đọc lại tài liệu cho node này..."
+                      : "Reading the source for this node..."}
+                  </p>
+                  <div className="space-y-3 animate-pulse">
+                    <div className="h-4 w-11/12 rounded-full bg-cyan-100" />
+                    <div className="h-4 w-10/12 rounded-full bg-cyan-100" />
+                    <div className="h-4 w-8/12 rounded-full bg-cyan-100" />
+                  </div>
+                </div>
+              ) : (
+                <>
+              <p
+                className={`text-slate-700 ${isCompact ? "text-[12px] leading-6" : "text-[13px] leading-7"}`}
+              >
+                {studyDetailParagraphs[0]}
+              </p>
+              {studyDetailParagraphs.slice(1).map((paragraph, index) => (
+                <p
+                  key={index}
+                  className={`mt-3 text-slate-600 ${isCompact ? "text-[12px] leading-6" : "text-[13px] leading-7"}`}
+                >
+                  {paragraph}
+                </p>
+              ))}
+              {detailedNodeNoteKeyPoints.length > 0 && !isCompact ? (
+                <div className="mt-4 space-y-2.5">
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-cyan-500">
+                    {isVietnamese ? "Điểm cần hiểu" : "Key Points"}
+                  </p>
+                  <div className="space-y-2">
+                    {detailedNodeNoteKeyPoints.slice(0, 6).map((point, index) => (
+                      <div
+                        key={`${point}-${index}`}
+                        className="flex gap-3 rounded-2xl border border-white/80 bg-white/80 px-3.5 py-3"
+                      >
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-cyan-100 text-[10px] font-black text-cyan-700">
+                          {index + 1}
+                        </span>
+                        <p className="text-[12px] font-medium leading-6 text-slate-600">
+                          {point}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {relatedStudyNotes.length > 0 && !isCompact ? (
+                <div className="mt-4 space-y-3">
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-cyan-500">
+                    {relatedStudyTitle}
+                  </p>
+                  {relatedStudyNotes.slice(0, 4).map((childNode) => (
+                    <button
+                      key={childNode.id}
+                      type="button"
+                      onClick={() => handleMindMapNodeSelect(childNode.id)}
+                      className="block w-full rounded-2xl border border-white/80 bg-white/80 px-3.5 py-3 text-left transition-all hover:border-cyan-200 hover:bg-white"
+                    >
+                      <span className="block text-[12px] font-black text-slate-800">
+                        {childNode.label}
+                      </span>
+                      {childNode.summary ? (
+                        <span className="mt-1.5 block text-[12px] font-medium leading-6 text-slate-500">
+                          {childNode.summary}
+                        </span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+                </>
+              )}
+            </div>
+          </section>
+
           {childPreviewNodes.length > 0 && (
             <section className={isCompact ? "space-y-2.5" : "space-y-3"}>
               <div className="flex items-center justify-between gap-3">
@@ -1550,7 +2354,7 @@ const DocumentViewer = () => {
               {isCompact && hiddenBranchCount > 0 ? (
                 <p className="text-[10px] font-semibold text-slate-400">
                   {isVietnamese
-                    ? `+${hiddenBranchCount} nhanh nua`
+                    ? `+${hiddenBranchCount} nhánh nữa`
                     : `+${hiddenBranchCount} more branches`}
                 </p>
               ) : null}
@@ -1660,7 +2464,10 @@ const DocumentViewer = () => {
 
     if (mindMapState.error)
       return <InlineAlert tone="error">{mindMapState.error}</InlineAlert>;
-    if (!mindMapState.data?.mindMap) return null;
+    if (!activeMindMapRoot) return null;
+
+    const activeMindMapLanguage =
+      activeMindMapVersion?.language || mindMapState.data?.language || selectedLanguage;
 
     return (
       <div className="flex flex-col h-full gap-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1680,7 +2487,7 @@ const DocumentViewer = () => {
                 type="button"
                 onClick={() => handleMindMapLanguageChange("vi")}
                 className={`rounded-md px-2.5 py-1 text-[9px] font-black uppercase tracking-widest transition-all ${
-                  selectedLanguage === "vi"
+                  activeMindMapLanguage === "vi"
                     ? "bg-white text-slate-900 shadow-sm"
                     : "text-slate-400 hover:text-slate-700"
                 }`}
@@ -1691,7 +2498,7 @@ const DocumentViewer = () => {
                 type="button"
                 onClick={() => handleMindMapLanguageChange("en")}
                 className={`rounded-md px-2.5 py-1 text-[9px] font-black uppercase tracking-widest transition-all ${
-                  selectedLanguage === "en"
+                  activeMindMapLanguage === "en"
                     ? "bg-white text-slate-900 shadow-sm"
                     : "text-slate-400 hover:text-slate-700"
                 }`}
@@ -1725,6 +2532,25 @@ const DocumentViewer = () => {
             </div>
             <button
               type="button"
+              onClick={() => setIsMindMapHistoryOpen(true)}
+              className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 ring-1 ring-slate-200/40 transition-all hover:bg-white hover:text-cyan-600"
+              title="Open mind map history"
+            >
+              <HistoryIcon className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMindMapInstructionError("");
+                setIsMindMapRefreshConfirmOpen(true);
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 ring-1 ring-slate-200/40 transition-all hover:bg-white hover:text-cyan-600"
+              title="Create custom mind map"
+            >
+              <SparklesIcon className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
               onClick={() => setIsMindMapModalOpen(true)}
               className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-cyan-500 hover:text-white transition-all ring-1 ring-slate-200/40"
               title="Full Screen"
@@ -1738,13 +2564,13 @@ const DocumentViewer = () => {
         <div className="relative flex-1 rounded-[1.5rem] bg-slate-50/60 border border-slate-200/60 overflow-hidden shadow-inner min-h-0">
           <Suspense fallback={<Skeleton className="h-full w-full rounded-none" />}>
             <MindMapCanvas
-              mindMap={mindMapState.data.mindMap}
+              mindMap={activeMindMapRoot}
               selectedNodeId={selectedMindMapNode?.id}
               expandedNodeIds={expandedMindMapNodeIdSet}
               showAllNodes={isShowingAllNodes}
               onNodeSelect={handleMindMapNodeSelect}
               onNodeToggle={handleMindMapNodeToggle}
-              language={mindMapState.data.language || selectedLanguage}
+              language={activeMindMapLanguage}
               height="100%"
               compact
             />
@@ -1983,6 +2809,269 @@ const DocumentViewer = () => {
     );
   };
 
+  const renderSksNote = () => {
+    const hasUnsavedChanges =
+      noteState.content !== noteState.savedContent ||
+      noteState.title !== noteState.savedTitle;
+    const updatedLabel = formatSummaryHistoryTimestamp(noteState.updatedAt);
+
+    return (
+      <div className="flex h-full min-h-0 flex-col gap-4">
+        <div className="flex shrink-0 items-center justify-between gap-3 px-1">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20">
+              <NoteIcon className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-900 truncate max-w-[150px]">
+                {noteState.title || "SKS Note"}
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsNoteHistoryOpen(true)}
+                className="text-left text-[9px] font-bold uppercase tracking-widest text-slate-400 transition-all hover:text-cyan-600 truncate max-w-[150px]"
+                title="Open note manager"
+              >
+                {updatedLabel ? `Saved ${updatedLabel}` : "Personal study note"}
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsNoteHistoryOpen(true)}
+              className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-500 ring-1 ring-slate-200/60 transition-all hover:bg-white hover:text-cyan-600 shadow-sm"
+              title="Note Manager"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSaveNote()}
+              disabled={noteState.loading || noteState.saving || !hasUnsavedChanges}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white transition-all hover:bg-cyan-600 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300 shadow-sm"
+            >
+              {noteState.saving ? "Saving" : hasUnsavedChanges ? "Save" : "Saved"}
+            </button>
+          </div>
+        </div>
+
+        {noteState.error ? (
+          <InlineAlert tone="error">{noteState.error}</InlineAlert>
+        ) : null}
+
+        {noteState.loading ? (
+          <div className="flex flex-1 flex-col gap-4 animate-pulse">
+            <Skeleton className="h-12 w-full rounded-2xl" />
+            <Skeleton className="min-h-0 flex-1 rounded-[1.75rem]" />
+          </div>
+        ) : (
+          <textarea
+            value={noteState.content}
+            onChange={(event) =>
+              setNoteState((current) => ({
+                ...current,
+                content: event.target.value,
+              }))
+            }
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === "s") {
+                event.preventDefault();
+                void handleSaveNote();
+              }
+            }}
+            placeholder="Write your study notes here..."
+            className="min-h-0 flex-1 resize-none rounded-[1.75rem] border border-slate-200 bg-white px-5 py-4 text-[14px] font-medium leading-7 text-slate-900 outline-none transition-all placeholder:text-slate-300 focus:border-cyan-400 focus:shadow-lg focus:shadow-cyan-500/10"
+          />
+        )}
+      </div>
+    );
+  };
+
+  const renderNoteHistoryModal = () => {
+    if (!isNoteHistoryOpen) return null;
+
+    return (
+      <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-900/40 p-5 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="w-full max-w-2xl overflow-hidden rounded-[2.5rem] border border-white/60 bg-white/90 shadow-[0_8px_40px_rgb(0,0,0,0.08)] backdrop-blur-xl animate-in zoom-in-95 duration-300">
+          <div className="flex items-center justify-between gap-5 border-b border-slate-200/50 px-8 py-6 bg-white/50">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-600 ring-1 ring-cyan-100 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-6 w-6">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-2xl font-[1000] tracking-tight text-slate-900">
+                  Note Manager
+                </h3>
+                <p className="mt-0.5 text-[13px] font-medium text-slate-500">
+                  Organize your study notes for this document
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsNoteHistoryOpen(false)}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-400 ring-1 ring-slate-200 shadow-sm transition-all hover:bg-rose-50 hover:text-rose-500 hover:ring-rose-200"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+
+          <div className="max-h-[65vh] space-y-4 overflow-y-auto p-8 scrollbar-none bg-slate-50/50">
+            <button
+              type="button"
+              onClick={() => {
+                handleCreateNote();
+                setIsNoteHistoryOpen(false);
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-cyan-300 bg-cyan-50/50 px-4 py-5 text-[11px] font-black uppercase tracking-[0.2em] text-cyan-700 transition-all hover:bg-cyan-100/50 hover:border-cyan-400"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Create New Note
+            </button>
+
+            {noteState.notes.map((note) => {
+              const isActive = note.id === noteState.activeNoteId;
+              const noteUpdatedLabel = formatSummaryHistoryTimestamp(
+                note.updatedAt,
+              );
+
+              return (
+                <div
+                  key={note.id}
+                  className={`rounded-[1.5rem] border p-5 shadow-sm transition-all ${
+                    isActive
+                      ? "border-cyan-200 bg-white ring-4 ring-cyan-50/50"
+                      : "border-slate-200 bg-white hover:border-cyan-300 hover:shadow-md"
+                  }`}
+                >
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <div className="flex-1 min-w-0">
+                      <input
+                        value={note.title}
+                        onChange={(event) => {
+                          const nextTitle = event.target.value;
+                          setNoteState((current) => ({
+                            ...current,
+                            title:
+                              current.activeNoteId === note.id
+                                ? nextTitle
+                                : current.title,
+                            notes: current.notes.map((item) =>
+                              item.id === note.id
+                                ? { ...item, title: nextTitle }
+                                : item,
+                            ),
+                          }));
+                        }}
+                        className="w-full bg-transparent text-[15px] font-black text-slate-800 outline-none transition-all placeholder:text-slate-300 focus:text-cyan-700 truncate"
+                        placeholder="Untitled note"
+                      />
+                      <p className="mt-1 text-[11px] font-semibold text-slate-400">
+                        {noteUpdatedLabel ? `Last modified ${noteUpdatedLabel}` : "Not saved yet"}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleSelectNote(note.id);
+                          setIsNoteHistoryOpen(false);
+                        }}
+                        className={`rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all shadow-sm ${
+                          isActive
+                            ? "bg-cyan-500 text-white shadow-cyan-500/20"
+                            : "bg-slate-100 text-slate-600 hover:bg-cyan-50 hover:text-cyan-700"
+                        }`}
+                      >
+                        {isActive ? "Active" : "Open"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleRenameNote(note.id, note.title)}
+                        disabled={noteState.saving || !note.title.trim()}
+                        className="rounded-xl bg-white px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-600 ring-1 ring-slate-200 transition-all hover:text-cyan-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 shadow-sm"
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteNote(note.id)}
+                        disabled={noteState.saving}
+                        className="rounded-xl bg-white px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-rose-500 ring-1 ring-rose-200 transition-all hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 shadow-sm"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                          <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderNoteTitleModal = () => {
+    if (!isNoteTitleModalOpen) return null;
+
+    return (
+      <div className="fixed inset-0 z-[180] flex items-center justify-center bg-slate-900/40 p-5 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="w-full max-w-md overflow-hidden rounded-[2.5rem] border border-white/60 bg-white shadow-[0_8px_40px_rgb(0,0,0,0.08)] animate-in zoom-in-95 duration-300">
+          <div className="px-8 pt-8 pb-6">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-600 ring-1 ring-cyan-100 shadow-sm">
+              <NoteIcon className="h-6 w-6" />
+            </div>
+            <h3 className="text-2xl font-[1000] tracking-tight text-slate-900">
+              Name your note
+            </h3>
+            
+            <input
+              value={noteTitleDraft}
+              onChange={(event) => setNoteTitleDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void commitSaveNoteWithTitle(noteTitleDraft);
+                }
+              }}
+              autoFocus
+              placeholder="e.g. Chapter 1 Summary"
+              className="mt-6 h-14 w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-5 text-[15px] font-bold text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-cyan-400 focus:bg-white focus:shadow-md focus:shadow-cyan-500/10"
+            />
+          </div>
+          
+          <div className="flex gap-3 bg-slate-50 px-8 py-5 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setIsNoteTitleModalOpen(false)}
+              className="flex-1 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 text-[11px] font-black uppercase tracking-widest text-slate-500 shadow-sm transition-all hover:bg-slate-50 hover:text-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void commitSaveNoteWithTitle(noteTitleDraft)}
+              disabled={noteState.saving || !noteTitleDraft.trim()}
+              className="flex-1 rounded-2xl bg-slate-900 px-5 py-3.5 text-[11px] font-black uppercase tracking-widest text-white shadow-md shadow-slate-900/20 transition-all hover:bg-cyan-600 hover:shadow-cyan-600/30 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"
+            >
+              {noteState.saving ? "Saving..." : "Save Note"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderRelated = () => (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col">
@@ -2027,11 +3116,12 @@ const DocumentViewer = () => {
   );
 
   const renderMindMapModal = () => {
-    if (!mindMapState.data?.mindMap) {
+    if (!activeMindMapRoot) {
       return null;
     }
 
-    const mindMapLanguage = mindMapState.data.language || selectedLanguage;
+    const mindMapLanguage =
+      activeMindMapVersion?.language || mindMapState.data?.language || selectedLanguage;
     const isShowingAllNodes = mindMapViewMode === "all";
 
     return (
@@ -2102,7 +3192,10 @@ const DocumentViewer = () => {
               <button
     type="button"
     disabled={mindMapState.loading}
-    onClick={() => setIsMindMapRefreshConfirmOpen(true)}
+    onClick={() => {
+      setMindMapInstructionError("");
+      setIsMindMapRefreshConfirmOpen(true);
+    }}
     className={`flex h-8 items-center gap-2 rounded-xl px-4 text-[9px] font-black uppercase tracking-widest transition-all ${mindMapState.loading ? "bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100 ring-0" : "bg-slate-100 text-slate-600 ring-1 ring-slate-200/40 hover:bg-white hover:text-cyan-600 hover:shadow-sm"}`}
   >
     {mindMapState.loading ? (
@@ -2114,7 +3207,7 @@ const DocumentViewer = () => {
       <SparklesIcon className="h-3.5 w-3.5" />
     )}
     <span className="hidden sm:inline">
-      {mindMapState.loading ? "Generating..." : "Regenerate"}
+      {mindMapState.loading ? "Generating..." : "New Map"}
     </span>
   </button>
 
@@ -2151,13 +3244,13 @@ const DocumentViewer = () => {
             )}
             <Suspense fallback={<Skeleton className="h-full w-full rounded-none" />}>
               <MindMapCanvas
-                mindMap={mindMapState.data.mindMap}
+                mindMap={activeMindMapRoot}
                 selectedNodeId={selectedMindMapNode?.id}
                 expandedNodeIds={expandedMindMapNodeIdSet}
                 showAllNodes={isShowingAllNodes}
                 onNodeSelect={handleMindMapNodeSelect}
                 onNodeToggle={handleMindMapNodeToggle}
-                language={mindMapState.data.language || selectedLanguage}
+                language={mindMapLanguage}
                 height="100%"
                 compact={false}
               />
@@ -2596,6 +3689,156 @@ const DocumentViewer = () => {
     );
   };
 
+  const renderMindMapHistoryModal = () => {
+    if (!mindMapState.data || !activeMindMapVersion) return null;
+
+    const activeSlot =
+      activeMindMapVersion.slot || selectedMindMapSlot || "default";
+    const hasMindMapHistory = mindMapHistoryVersions.length > 0;
+
+    const handleSelectMindMapVersion = (slot) => {
+      handleMindMapSlotChange(slot);
+      setIsMindMapHistoryOpen(false);
+    };
+
+    return (
+      <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/50 p-5 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="w-full max-w-lg overflow-hidden rounded-[2.5rem] border border-white/40 bg-white/90 shadow-2xl backdrop-blur-2xl animate-in zoom-in-95 duration-300">
+          <div className="flex items-center justify-between border-b border-slate-100 px-8 py-7">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20">
+                <MindMapIcon className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-[1000] tracking-tight text-slate-900">
+                  Mind Map History
+                </h3>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+                  Default and custom maps
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsMindMapHistoryOpen(false)}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-500"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+
+          <div className="max-h-[60vh] space-y-8 overflow-y-auto p-8 scrollbar-none">
+            <div className="space-y-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">
+                AI Baseline
+              </p>
+              <button
+                type="button"
+                onClick={() => handleSelectMindMapVersion("default")}
+                className={`flex w-full items-center gap-4 rounded-[2rem] border p-5 text-left transition-all ${
+                  activeSlot === "default"
+                    ? "border-cyan-200 bg-cyan-50/70 shadow-sks-soft"
+                    : "border-slate-100 bg-white hover:border-cyan-100 hover:bg-cyan-50/40"
+                }`}
+              >
+                <div
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                    activeSlot === "default"
+                      ? "bg-cyan-500 text-white"
+                      : "bg-slate-100 text-slate-400"
+                  }`}
+                >
+                  <RestoreIcon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[15px] font-[1000] text-slate-900">
+                    {defaultMindMapVersion?.root?.label ||
+                      defaultMindMapVersion?.mindMap?.label ||
+                      "System Default Mind Map"}
+                  </p>
+                  <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                    Standard AI mind map generated from the document.
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">
+                Custom Personalizations
+              </p>
+              {hasMindMapHistory ? (
+                <div className="space-y-3">
+                  {mindMapHistoryVersions.map((version, index) => {
+                    const isSelected = version.slot === activeSlot;
+                    const generatedLabel = formatSummaryHistoryTimestamp(
+                      version.generatedAt,
+                    );
+                    const promptText =
+                      typeof version.instruction === "string" &&
+                      version.instruction.trim()
+                        ? version.instruction.trim()
+                        : null;
+
+                    return (
+                      <button
+                        key={`${version.slot}-${index}`}
+                        type="button"
+                        onClick={() => handleSelectMindMapVersion(version.slot)}
+                        className={`flex w-full flex-col gap-3 rounded-[2rem] border p-5 text-left transition-all ${
+                          isSelected
+                            ? "border-blue-200 bg-blue-50/70 shadow-sks-soft"
+                            : "border-slate-100 bg-white hover:border-blue-100 hover:bg-blue-50/30"
+                        }`}
+                      >
+                        <div className="flex items-start gap-4">
+                          <div
+                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                              isSelected
+                                ? "bg-blue-500 text-white"
+                                : "bg-slate-100 text-slate-400"
+                            }`}
+                          >
+                            <MindMapIcon className="h-5 w-5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[15px] font-[1000] text-slate-900">
+                              {version.root?.label ||
+                                version.mindMap?.label ||
+                                `Custom Mind Map ${index + 1}`}
+                            </p>
+                            <p className="mt-1 text-[10px] font-bold text-slate-400">
+                              {generatedLabel || "Recently generated"}
+                            </p>
+                          </div>
+                        </div>
+                        {promptText ? (
+                          <p className="line-clamp-2 rounded-2xl bg-slate-950/5 px-4 py-3 text-[11px] font-semibold italic leading-relaxed text-slate-600">
+                            "{promptText}"
+                          </p>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-[2rem] border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
+                  <HistoryIcon className="mx-auto h-8 w-8 text-slate-300" />
+                  <p className="mt-4 text-[12px] font-[1000] uppercase tracking-[0.2em] text-slate-500">
+                    History Empty
+                  </p>
+                  <p className="mt-2 text-[12px] font-medium text-slate-400">
+                    Create a custom mind map to save it here.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderSummaryRefreshConfirmModal = () => {
     if (!summaryState.data) return null;
 
@@ -2703,11 +3946,11 @@ const DocumentViewer = () => {
   };
 
   const renderMindMapRefreshConfirmModal = () => {
-    if (!mindMapState.data?.mindMap) return null;
+    if (!activeMindMapRoot) return null;
 
     const activeMindMapLanguage =
-      mindMapState.data.language || selectedLanguage;
-    const languageLabel = activeMindMapLanguage === "vi" ? "VI" : "EN";
+      activeMindMapVersion?.language || mindMapState.data?.language || selectedLanguage;
+    const customExists = mindMapHistoryVersions.length > 0;
 
     return (
       <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/50 p-5 backdrop-blur-md animate-in fade-in duration-300">
@@ -2715,29 +3958,58 @@ const DocumentViewer = () => {
           <div className="flex items-start justify-between gap-6">
             <div className="space-y-3">
               <p className="text-[9px] font-black uppercase tracking-[0.35em] text-slate-400">
-                Confirm Refresh
+                Custom Mind Map
               </p>
               <h3 className="text-2xl font-[1000] tracking-tight text-slate-900">
-                Create a new {languageLabel} mind map?
+                {customExists
+                  ? "Replace the current custom mind map"
+                  : "Create a new custom mind map"}
               </h3>
-              <p className="text-[14px] leading-relaxed text-slate-600">
-                This will create a fresh mind map and replace the current
-                version for the selected language.
-              </p>
             </div>
             <button
               type="button"
-              onClick={() => setIsMindMapRefreshConfirmOpen(false)}
+              onClick={() => {
+                setIsMindMapRefreshConfirmOpen(false);
+                setMindMapInstructionError("");
+              }}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-500"
             >
               <CloseIcon />
             </button>
           </div>
 
+          <div className="mt-6 space-y-3">
+            <label
+              htmlFor="mindmap-instruction"
+              className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500"
+            >
+              How should this mind map be generated?
+            </label>
+            <textarea
+              id="mindmap-instruction"
+              value={mindMapInstructionDraft}
+              onChange={(event) => {
+                setMindMapInstructionDraft(event.target.value);
+                if (mindMapInstructionError) {
+                  setMindMapInstructionError("");
+                }
+              }}
+              rows={5}
+              placeholder="Example: Make it exam-oriented, show causes and effects, and group definitions separately."
+              className="w-full resize-none rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] font-medium leading-6 text-slate-900 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:shadow-lg focus:shadow-cyan-500/10"
+            />
+            {mindMapInstructionError ? (
+              <InlineAlert tone="error">{mindMapInstructionError}</InlineAlert>
+            ) : null}
+          </div>
+
           <div className="mt-8 flex items-center justify-end gap-3">
             <button
               type="button"
-              onClick={() => setIsMindMapRefreshConfirmOpen(false)}
+              onClick={() => {
+                setIsMindMapRefreshConfirmOpen(false);
+                setMindMapInstructionError("");
+              }}
               className="rounded-2xl border border-slate-200 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-900"
             >
               Cancel
@@ -2745,12 +4017,33 @@ const DocumentViewer = () => {
             <button
               type="button"
               onClick={() => {
+                const trimmedInstruction = mindMapInstructionDraft.trim();
+
+                if (!trimmedInstruction) {
+                  setMindMapInstructionError(
+                    "Please describe how the new mind map should be generated.",
+                  );
+                  return;
+                }
+
+                setMindMapInstructionError("");
                 setIsMindMapRefreshConfirmOpen(false);
-                void loadMindMap(activeMindMapLanguage, { forceRefresh: true });
+                void (async () => {
+                  const created = await loadMindMap(activeMindMapLanguage, {
+                    forceRefresh: true,
+                    slot: "custom",
+                    instruction: trimmedInstruction,
+                  });
+
+                  if (!created) {
+                    setIsMindMapRefreshConfirmOpen(true);
+                  }
+                })();
               }}
+              disabled={mindMapState.loading}
               className="rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 px-6 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-cyan-500/20 transition-all hover:scale-[1.02] active:scale-95"
             >
-              Confirm New Mind Map
+              {customExists ? "Replace Custom Map" : "Create Custom Map"}
             </button>
           </div>
         </div>
@@ -2920,7 +4213,7 @@ const DocumentViewer = () => {
             {/* AI Content Area */}
             <div
               className={`flex-1 min-h-0 animate-soft-reveal scrollbar-none ${
-                activeTab === "mindmap" || activeTab === "ask"
+                activeTab === "mindmap" || activeTab === "ask" || activeTab === "note"
                   ? "flex flex-col overflow-hidden px-6 pt-4 pb-0"
                   : "overflow-y-auto px-6 py-5 pb-24"
               }`}
@@ -2929,6 +4222,7 @@ const DocumentViewer = () => {
               {activeTab === "summary" && renderSummary()}
               {activeTab === "mindmap" && renderMindMap()}
               {activeTab === "ask" && renderAsk()}
+              {activeTab === "note" && renderSksNote()}
               {activeTab === "related" && renderRelated()}
             </div>
           </aside>
@@ -2939,6 +4233,9 @@ const DocumentViewer = () => {
       {isMindMapModalOpen && renderMindMapModal()}
       {isSummaryModalOpen && renderSummaryModal()}
       {isSummaryHistoryOpen && renderSummaryHistoryModal()}
+      {isMindMapHistoryOpen && renderMindMapHistoryModal()}
+      {isNoteHistoryOpen && renderNoteHistoryModal()}
+      {isNoteTitleModalOpen && renderNoteTitleModal()}
       {isSummaryRefreshConfirmOpen && renderSummaryRefreshConfirmModal()}
       {isMindMapRefreshConfirmOpen && renderMindMapRefreshConfirmModal()}
     </div>

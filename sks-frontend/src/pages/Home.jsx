@@ -7,6 +7,14 @@ const HERO_SLIDES = [
   { id: 3, src: 'https://cdn.elearningindustry.com/wp-content/uploads/2019/01/5-ways-ai-is-changing-the-education-industry-1-1024x574.jpg', alt: 'AI Learning' },
 ];
 
+const LANDING_NAV_ITEMS = [
+  { href: '#features', label: 'Features' },
+  { href: '#ai-intelligence', label: 'AI Tools' },
+  { href: '#study-gps', label: 'StudyGPS' },
+  { href: '#workflow', label: 'Workflow' },
+  { href: '#about', label: 'About' },
+];
+
 const FEATURES = [
   {
     title: 'Smart Document Management',
@@ -59,10 +67,16 @@ const STEPS = [
   { number: '03', title: 'Discover', description: 'Get summaries, ask questions, and find connections you never knew existed.' },
 ];
 
+const STUDY_GPS_HIGHLIGHTS = ['Clear next step', 'Less confusion', 'Exam-ready'];
+
 const Home = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [typingIndex, setTypingIndex] = useState(0);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [isScrolled, setIsScrolled] = useState(false);
+  const primaryActionHref = '/register';
+  const primaryActionLabel = 'Get Started';
+  const studyGpsHref = '/register';
 
   useEffect(() => {
     const slideTimer = setInterval(() => {
@@ -71,14 +85,81 @@ const Home = () => {
     const typingTimer = setInterval(() => {
       setTypingIndex((prev) => (prev + 1) % 4);
     }, 6000); // 6s/chữ
+    const handleScroll = () => {
+      setIsScrolled((window.scrollY || document.documentElement.scrollTop || 0) > 20);
+    };
+
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, true);
+
     return () => {
       clearInterval(slideTimer);
       clearInterval(typingTimer);
+      window.removeEventListener('scroll', handleScroll, true);
     };
   }, []);
 
   return (
-    <div className="mx-auto max-w-[1440px]">
+    <main id="top" className="min-h-screen overflow-hidden bg-[#f4faff] text-slate-900">
+      <header
+        className={`fixed top-0 left-0 right-0 z-[100] flex w-full items-center transition-all duration-300 ${
+          isScrolled
+            ? 'h-16 border-b border-slate-200 bg-white shadow-lg shadow-slate-900/10'
+            : 'h-20 border-b border-slate-200/80 bg-white shadow-sm shadow-slate-900/5'
+        }`}
+      >
+        <div className="relative mx-auto flex w-full max-w-[1440px] items-center justify-between px-6 lg:px-10">
+          <div className="flex min-w-0 items-center gap-8">
+            <a href="#top" className="group flex items-center gap-4 outline-none transition-all">
+              <div className="relative flex h-9 w-9 items-center justify-center">
+                <div className="absolute inset-0 rounded-2xl bg-cyan-500/20 blur-xl transition-colors group-hover:bg-cyan-500/30" />
+                <div className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-slate-900 shadow-xl ring-1 ring-cyan-300/20 transition-all duration-500 group-hover:rotate-6 group-hover:scale-110">
+                  <span className="font-display text-[14px] font-black italic text-cyan-400">S</span>
+                </div>
+              </div>
+              <div className="hidden flex-col items-start leading-none pointer-events-none sm:flex">
+                <span className="text-lg font-black tracking-tighter text-slate-900">SKS</span>
+                <div className="mt-0.5 flex items-center gap-1">
+                  <span className="relative flex h-1 w-1">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex h-1 w-1 rounded-full bg-emerald-500" />
+                  </span>
+                  <span className="text-[7px] font-black uppercase tracking-[0.2em] text-cyan-600/80">AI Active</span>
+                </div>
+              </div>
+            </a>
+
+            <nav className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-10 lg:flex">
+              {LANDING_NAV_ITEMS.map((item) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className="relative whitespace-nowrap py-1 text-center text-[13px] font-black tracking-wide text-slate-500 transition-all hover:text-slate-950"
+                >
+                  {item.label}
+                </a>
+              ))}
+            </nav>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Link
+              to="/login"
+              className="inline-flex h-10 items-center justify-center rounded-full px-4 text-[12px] font-black text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-950 active:scale-95 sm:px-5"
+            >
+              Sign in
+            </Link>
+            <Link
+              to="/register"
+              className="inline-flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-600 to-blue-600 px-4 text-[12px] font-black text-white shadow-lg shadow-cyan-600/20 transition-all hover:-translate-y-0.5 active:scale-95 sm:px-5"
+            >
+              Sign up
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-[1440px] px-6 pt-24 lg:px-10 lg:pt-28">
       {/* ═══ HERO SECTION ═══ */}
       <section className="relative grid gap-8 pt-4 pb-12 lg:grid-cols-2 lg:items-center lg:gap-16 lg:pt-6 lg:pb-20">
         {/* Left — Text */}
@@ -128,10 +209,10 @@ const Home = () => {
 
           <div className="mt-10 flex flex-wrap items-center gap-4">
             <Link
-              to="/app"
+              to={primaryActionHref}
               className="group inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 px-8 py-4 text-[14px] font-[1000] tracking-wide text-white shadow-xl shadow-cyan-600/25 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-cyan-600/35 active:scale-[0.98]"
             >
-              Open Workspace
+              {primaryActionLabel}
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5 transition-transform duration-300 group-hover:translate-x-1">
                 <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638l-3.96-3.697a.75.75 0 0 1 1.024-1.096l5.25 4.9a.75.75 0 0 1 0 1.097l-5.25 4.9a.75.75 0 0 1-1.024-1.097l3.96-3.697H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
               </svg>
@@ -235,7 +316,7 @@ const Home = () => {
 
 
       {/* ═══ FEATURES SECTION ═══ */}
-      <section id="features" className="py-16 lg:py-24">
+      <section id="features" className="scroll-mt-28 py-16 lg:py-24">
         <div className="mb-12 text-center animate-slide-up [animation-delay:0.1s] [animation-fill-mode:both]">
           <p className="text-[11px] font-black uppercase tracking-[0.3em] text-cyan-600">Core Capabilities</p>
           <h2 className="mt-3 font-display text-4xl font-[1000] tracking-tight text-slate-900 sm:text-5xl">
@@ -275,7 +356,7 @@ const Home = () => {
       </section>
 
       {/* ═══ AI SHOWCASE SECTION ═══ */}
-      <section className="py-8 lg:py-12">
+      <section id="ai-intelligence" className="scroll-mt-28 py-8 lg:py-12">
         <div
           className="relative overflow-hidden rounded-[32px] shadow-2xl animate-slide-up [animation-delay:0.15s] [animation-fill-mode:both]"
         >
@@ -324,7 +405,7 @@ const Home = () => {
 
             <div className="mt-12">
               <Link
-                to="/app"
+                to={primaryActionHref}
                 className="inline-flex items-center gap-3 rounded-2xl bg-white px-8 py-4 text-[13px] font-[1000] tracking-wide text-slate-900 shadow-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl active:scale-[0.98]"
               >
                 Try AI Intelligence
@@ -338,7 +419,109 @@ const Home = () => {
       </section>
 
       {/* ═══ HOW IT WORKS ═══ */}
-      <section className="py-16 lg:py-24">
+      <section id="study-gps" className="scroll-mt-28 py-16 lg:py-24">
+        <div className="grid gap-10 lg:grid-cols-[0.86fr_1.14fr] lg:items-center">
+          <div className="animate-slide-up [animation-delay:0.1s] [animation-fill-mode:both]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/80 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-emerald-700 shadow-sm">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              StudyGPS
+            </div>
+            <h2 className="mt-6 max-w-2xl font-display text-4xl font-[1000] leading-tight tracking-tight text-slate-950 sm:text-5xl">
+              Stop guessing. Follow the right learning path.
+            </h2>
+            <p className="mt-5 max-w-xl text-lg font-medium leading-relaxed text-slate-500">
+              StudyGPS turns your documents into a simple roadmap for what to review, practice, and finish next.
+            </p>
+
+            <div className="mt-8 flex flex-wrap gap-3">
+              {STUDY_GPS_HIGHLIGHTS.map((item) => (
+                <span
+                  key={item}
+                  className="rounded-full border border-slate-200 bg-white px-5 py-2.5 text-[12px] font-[1000] text-slate-700 shadow-sm"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+
+            <div className="mt-9 flex flex-wrap items-center gap-4">
+              <Link
+                to={studyGpsHref}
+                className="inline-flex items-center gap-3 rounded-2xl bg-slate-900 px-8 py-4 text-[13px] font-[1000] tracking-wide text-white shadow-xl transition-all hover:-translate-y-1 hover:bg-emerald-600 active:scale-[0.98]"
+              >
+                Open StudyGPS
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+                  <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638l-3.96-3.697a.75.75 0 0 1 1.024-1.096l5.25 4.9a.75.75 0 0 1 0 1.097l-5.25 4.9a.75.75 0 0 1-1.024-1.097l3.96-3.697H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
+                </svg>
+              </Link>
+            </div>
+          </div>
+
+          <div className="relative animate-scale-in [animation-delay:0.2s] [animation-fill-mode:both]">
+            <div className="relative min-h-[420px] overflow-hidden rounded-[32px] border border-emerald-100 bg-white p-8 shadow-[0_30px_90px_-45px_rgba(15,23,42,0.35)]">
+              <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(236,253,245,0.9),rgba(255,255,255,0.72)_42%,rgba(224,242,254,0.75))]" />
+              <div className="absolute inset-x-10 top-10 h-40 rounded-full bg-cyan-200/25 blur-3xl" />
+
+              <div className="relative flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-600">
+                    Learning roadmap
+                  </p>
+                  <h3 className="mt-2 text-2xl font-[1000] tracking-tight text-slate-950">
+                    A clear route from notes to readiness.
+                  </h3>
+                </div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 shadow-sm ring-1 ring-emerald-100">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6">
+                    <circle cx="12" cy="12" r="9" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m15.5 8.5-2.3 4.7-4.7 2.3 2.3-4.7 4.7-2.3Z" />
+                  </svg>
+                </div>
+              </div>
+
+              <div className="relative mt-12 h-[250px]">
+                <svg className="absolute inset-0 h-full w-full" viewBox="0 0 660 250" fill="none" aria-hidden="true">
+                  <path d="M62 168 C145 74 242 70 328 126 C424 188 492 102 598 64" stroke="#dbeafe" strokeWidth="24" strokeLinecap="round" />
+                  <path d="M62 168 C145 74 242 70 328 126 C424 188 492 102 598 64" stroke="url(#studyGpsPath)" strokeWidth="8" strokeLinecap="round" />
+                  <defs>
+                    <linearGradient id="studyGpsPath" x1="62" y1="168" x2="598" y2="64" gradientUnits="userSpaceOnUse">
+                      <stop stopColor="#0ea5e9" />
+                      <stop offset="0.48" stopColor="#14b8a6" />
+                      <stop offset="1" stopColor="#10b981" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+
+                {[
+                  { label: 'Goal', className: 'left-[5%] top-[57%]' },
+                  { label: 'Route', className: 'left-[34%] top-[24%]' },
+                  { label: 'Practice', className: 'left-[58%] top-[58%]' },
+                  { label: 'Ready', className: 'right-[5%] top-[10%]' },
+                ].map((point, index) => (
+                  <div key={point.label} className={`absolute ${point.className}`}>
+                    <div className="flex min-w-[88px] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[12px] font-[1000] text-slate-900 shadow-lg">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-[10px] text-emerald-700">
+                        {index + 1}
+                      </span>
+                      {point.label}
+                    </div>
+                  </div>
+                ))}
+
+                <div className="absolute left-[17%] top-[4%] rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 shadow-sm">
+                  Notes
+                </div>
+                <div className="absolute bottom-2 right-[22%] rounded-full border border-emerald-100 bg-emerald-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700 shadow-sm">
+                  On track
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Workflow section */}
+      <section id="workflow" className="scroll-mt-28 py-16 lg:py-24">
         <div className="mb-12 text-center animate-slide-up [animation-delay:0.1s] [animation-fill-mode:both]">
           <p className="text-[11px] font-black uppercase tracking-[0.3em] text-cyan-600">Simple Workflow</p>
           <h2 className="mt-3 font-display text-4xl font-[1000] tracking-tight text-slate-900 sm:text-5xl">
@@ -392,10 +575,10 @@ const Home = () => {
           
           <div className="mt-12 flex flex-col items-center justify-center gap-6 sm:flex-row">
             <Link
-              to="/app"
+              to={primaryActionHref}
               className="group inline-flex items-center gap-3 rounded-2xl bg-white px-10 py-5 text-[15px] font-[1000] tracking-wide text-slate-900 shadow-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_40px_rgba(255,255,255,0.1)] active:scale-[0.98]"
             >
-              Get Started for Free
+              {primaryActionLabel}
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5 transition-transform group-hover:translate-x-1">
                 <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638l-3.96-3.697a.75.75 0 0 1 1.024-1.096l5.25 4.9a.75.75 0 0 1 0 1.097l-5.25 4.9a.75.75 0 0 1-1.024-1.097l3.96-3.697H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
               </svg>
@@ -405,7 +588,7 @@ const Home = () => {
       </section>
 
       {/* ═══ ACADEMIC FOOTER ═══ */}
-      <footer className="relative mt-20 bg-slate-50/50 pb-10 pt-20">
+      <footer id="about" className="relative mt-20 scroll-mt-28 bg-slate-50/50 pb-10 pt-20">
         {/* Subtle top accent line */}
         <div className="absolute top-0 left-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
         
@@ -433,7 +616,7 @@ const Home = () => {
             <div className="flex flex-col gap-7">
               <h4 className="text-[11px] font-[1000] uppercase tracking-[0.25em] text-slate-800">Platform</h4>
               <ul className="flex flex-col gap-3.5">
-                {['Workspace', 'Favorites', 'Smart Search', 'AI Summaries'].map(item => (
+                {['Workspace', 'StudyGPS', 'Favorites', 'Smart Search', 'AI Summaries'].map(item => (
                   <li key={item}>
                     <a href="#" className="text-[14px] font-bold text-slate-500 transition-colors hover:text-cyan-600">{item}</a>
                   </li>
@@ -493,7 +676,8 @@ const Home = () => {
           </div>
         </div>
       </footer>
-    </div>
+      </div>
+    </main>
   );
 };
 

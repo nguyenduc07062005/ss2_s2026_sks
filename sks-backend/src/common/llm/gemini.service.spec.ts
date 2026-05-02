@@ -32,7 +32,9 @@ describe('GeminiService', () => {
         const values: Record<string, string> = {
           GEMINI_API_KEY: 'test-key',
           GEMINI_TEXT_MODEL: 'gemini-2.5-flash',
-          GEMINI_TEXT_MODEL_FALLBACKS: 'gemini-3-flash,gemini-3.1-flash-lite',
+          GEMINI_TEXT_MODEL_FALLBACK: 'gemini-3.1-flash-lite-preview',
+          GEMINI_TEXT_MODEL_FALLBACKS:
+            'gemini-2.5-flash-lite,gemini-flash-lite-latest',
           GEMINI_EMBEDDING_MODEL: 'gemini-embedding-001',
         };
 
@@ -59,8 +61,28 @@ describe('GeminiService', () => {
       contents: 'Explain this document',
     });
     expect(mockGenerateContent).toHaveBeenNthCalledWith(2, {
-      model: 'gemini-3-flash',
+      model: 'gemini-3.1-flash-lite-preview',
       contents: 'Explain this document',
+    });
+  });
+
+  it('passes generation options to raw Gemini text generation', async () => {
+    mockGenerateContent.mockResolvedValueOnce({ text: 'JSON response' });
+
+    await service.generateText('Return JSON', {
+      temperature: 0.35,
+      topP: 0.92,
+      maxOutputTokens: 4200,
+    });
+
+    expect(mockGenerateContent).toHaveBeenCalledWith({
+      model: 'gemini-2.5-flash',
+      contents: 'Return JSON',
+      config: {
+        temperature: 0.35,
+        topP: 0.92,
+        maxOutputTokens: 4200,
+      },
     });
   });
 
@@ -76,7 +98,7 @@ describe('GeminiService', () => {
 
     expect(mockChatGoogle).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: 'gemini-3-flash',
+        model: 'gemini-3.1-flash-lite-preview',
         apiKey: 'test-key',
         temperature: 0.2,
       }),

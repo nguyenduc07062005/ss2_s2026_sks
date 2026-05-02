@@ -12,6 +12,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const DocumentViewer = lazy(() => import('./pages/DocumentViewer.jsx'));
 const Favorites = lazy(() => import('./pages/Favorites.jsx'));
 const Home = lazy(() => import('./pages/Home.jsx'));
+const StudyGPS = lazy(() => import('./pages/StudyGPS.jsx'));
 
 const renderRoute = (element) => (
   <Suspense fallback={null}>{element}</Suspense>
@@ -21,11 +22,11 @@ const Layout = () => {
   return (
     <Routes>
       <Route path="/" element={<App />}>
-        <Route index element={<Navigate to="/app/home" replace />} />
+        <Route index element={renderRoute(<Home />)} />
         <Route path="login" element={renderRoute(<Login />)} />
         <Route path="register" element={renderRoute(<Register />)} />
+        <Route path="home" element={<Navigate to="/" replace />} />
         <Route
-          path="app"
           element={
             <ProtectedRoute>
               <DocumentsProvider>
@@ -36,13 +37,16 @@ const Layout = () => {
             </ProtectedRoute>
           }
         >
-          <Route index element={renderRoute(<Dashboard />)} />
-          <Route path="home" element={renderRoute(<Home />)} />
-          <Route path="favorites" element={renderRoute(<Favorites />)} />
-          <Route
-            path="documents/:documentId"
-            element={renderRoute(<DocumentViewer />)}
-          />
+          <Route path="app">
+            <Route index element={renderRoute(<Dashboard />)} />
+            <Route path="home" element={<Navigate to="/app" replace />} />
+            <Route path="study-gps" element={renderRoute(<StudyGPS />)} />
+            <Route path="favorites" element={renderRoute(<Favorites />)} />
+            <Route
+              path="documents/:documentId"
+              element={renderRoute(<DocumentViewer />)}
+            />
+          </Route>
         </Route>
         <Route path="dashboard" element={<Navigate to="/app" replace />} />
         <Route path="documents" element={<Navigate to="/app" replace />} />

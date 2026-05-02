@@ -7,6 +7,8 @@ import {
   DiagramArtifact,
   DocumentArtifactCache,
   MindMapArtifact,
+  MindMapLanguageCache,
+  MindMapNode,
   RagSource,
   SummaryArtifact,
   SummaryFormat,
@@ -75,18 +77,57 @@ export class RagArtifactCacheService {
     document: Document,
     language: SummaryLanguage,
   ): MindMapArtifact | null {
-    return (
-      this.getArtifactCache(document).mindMapByLanguage?.[language] ?? null
+    const mindMapState = this.getNormalizedMindMapState(
+      this.getArtifactCache(document).mindMapByLanguage?.[language],
+      language,
     );
+    const selectedSlot = this.resolveActiveSlot(
+      mindMapState?.activeSlot,
+      mindMapState?.versions,
+    );
+
+    return mindMapState?.versions?.[selectedSlot] ?? null;
+  }
+
+  getMindMapState(
+    userDocument: UserDocument,
+    language: SummaryLanguage,
+    fallbackDocument?: Document,
+  ): MindMapLanguageCache | null {
+    const userMindMapState = this.getNormalizedMindMapState(
+      this.getArtifactCache(userDocument).mindMapByLanguage?.[language],
+      language,
+    );
+    const fallbackMindMapState = this.getNormalizedMindMapState(
+      this.getArtifactCache(fallbackDocument).mindMapByLanguage?.[language],
+      language,
+    );
+
+    return this.mergeMindMapStates(fallbackMindMapState, userMindMapState);
   }
 
   async saveMindMap(
-    document: Document,
+    userDocument: UserDocument,
     mindMap: MindMapArtifact,
+    fallbackDocument?: Document,
   ): Promise<void> {
-    await this.saveDocumentArtifactCache(document, {
+    const currentMindMapState =
+      this.getMindMapState(
+        userDocument,
+        mindMap.summaryLanguage,
+        fallbackDocument,
+      ) ?? null;
+    const nextMindMapState: MindMapLanguageCache = {
+      activeSlot: mindMap.slot,
+      versions: {
+        ...(currentMindMapState?.versions ?? {}),
+        [mindMap.slot]: mindMap,
+      },
+    };
+
+    await this.saveUserDocumentArtifactCache(userDocument, {
       mindMapByLanguage: {
-        [mindMap.summaryLanguage]: mindMap,
+        [mindMap.summaryLanguage]: nextMindMapState,
       },
     });
   }
@@ -261,6 +302,200 @@ export class RagArtifactCacheService {
     };
   }
 
+  private getNormalizedMindMapState(
+    value: unknown,
+    language: SummaryLanguage,
+  ): MindMapLanguageCache | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const candidate = value as Record<string, unknown>;
+    const rawVersions =
+      candidate.versions &&
+      typeof candidate.versions === 'object' &&
+      !Array.isArray(candidate.versions)
+        ? (candidate.versions as Record<string, unknown>)
+        : null;
+
+    const defaultVersion = this.coerceMindMapArtifact(
+      rawVersions?.default ?? value,
+      language,
+      'default',
+    );
+    const customVersion = this.coerceMindMapArtifact(
+      rawVersions?.custom,
+      language,
+      'custom',
+    );
+
+    if (!defaultVersion && !customVersion) {
+      return null;
+    }
+
+    const versions: MindMapLanguageCache['versions'] = {};
+
+    if (defaultVersion) {
+      versions.default = defaultVersion;
+    }
+
+    if (customVersion) {
+      versions.custom = customVersion;
+    }
+
+    return {
+      activeSlot: this.resolveActiveSlot(candidate.activeSlot, versions),
+      versions,
+    };
+  }
+
+  private mergeMindMapStates(
+    baseState: MindMapLanguageCache | null,
+    overrideState: MindMapLanguageCache | null,
+  ): MindMapLanguageCache | null {
+    const versions: MindMapLanguageCache['versions'] = {
+      ...(baseState?.versions ?? {}),
+      ...(overrideState?.versions ?? {}),
+    };
+
+    if (!versions.default && !versions.custom) {
+      return null;
+    }
+
+    return {
+      activeSlot: this.resolveActiveSlot(
+        overrideState?.activeSlot ?? baseState?.activeSlot,
+        versions,
+      ),
+      versions,
+    };
+  }
+
+  private coerceMindMapArtifact(
+    value: unknown,
+    fallbackLanguage: SummaryLanguage,
+    fallbackSlot: SummaryVersionSlot,
+  ): MindMapArtifact | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const candidate = value as Record<string, unknown>;
+    const root = this.coerceMindMapNode(candidate.root);
+    const summaryText =
+      typeof candidate.summaryText === 'string'
+        ? candidate.summaryText.trim()
+        : '';
+
+    if (!root || !summaryText) {
+      return null;
+    }
+
+    return {
+      root,
+      summaryText,
+      generatedAt:
+        typeof candidate.generatedAt === 'string' && candidate.generatedAt
+          ? candidate.generatedAt
+          : new Date().toISOString(),
+      summaryLanguage: this.isSummaryLanguage(candidate.summaryLanguage)
+        ? candidate.summaryLanguage
+        : fallbackLanguage,
+      version: typeof candidate.version === 'number' ? candidate.version : 0,
+      slot: this.isSummarySlot(candidate.slot) ? candidate.slot : fallbackSlot,
+      instruction:
+        typeof candidate.instruction === 'string'
+          ? candidate.instruction
+          : null,
+      sources: this.coerceSources(candidate.sources),
+    };
+  }
+
+  private coerceMindMapNode(value: unknown): MindMapNode | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const candidate = value as Record<string, unknown>;
+    const id = typeof candidate.id === 'string' ? candidate.id.trim() : '';
+    const label =
+      typeof candidate.label === 'string' ? candidate.label.trim() : '';
+
+    if (!label) {
+      return null;
+    }
+
+    const rawChildren = Array.isArray(candidate.children)
+      ? candidate.children
+      : [];
+    const children = rawChildren
+      .map((child) => this.coerceMindMapNode(child))
+      .filter((child): child is MindMapNode => Boolean(child));
+    const studyNote = this.coerceMindMapNodeStudyNote(
+      candidate.studyNote ?? candidate.study_note ?? candidate.note,
+    );
+
+    return {
+      id: id || 'root',
+      label,
+      summary:
+        typeof candidate.summary === 'string' ? candidate.summary.trim() : '',
+      kind: this.isMindMapNodeKind(candidate.kind)
+        ? candidate.kind
+        : 'cluster',
+      children,
+      ...(studyNote ? { studyNote } : {}),
+    };
+  }
+
+  private coerceMindMapNodeStudyNote(
+    value: unknown,
+  ): MindMapNode['studyNote'] {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const candidate = value as Record<string, unknown>;
+    const keyPoints = Array.isArray(candidate.keyPoints)
+      ? candidate.keyPoints
+      : Array.isArray(candidate.key_points)
+        ? candidate.key_points
+        : [];
+    const note = {
+      overview:
+        typeof candidate.overview === 'string'
+          ? candidate.overview.trim()
+          : '',
+      explanation:
+        typeof candidate.explanation === 'string'
+          ? candidate.explanation.trim()
+          : typeof candidate.detail === 'string'
+            ? candidate.detail.trim()
+            : '',
+      keyPoints: keyPoints
+        .filter((point): point is string => typeof point === 'string')
+        .map((point) => point.trim())
+        .filter(Boolean),
+      studyFocus:
+        typeof candidate.studyFocus === 'string'
+          ? candidate.studyFocus.trim()
+          : typeof candidate.study_focus === 'string'
+            ? candidate.study_focus.trim()
+            : '',
+    };
+
+    if (
+      !note.overview &&
+      !note.explanation &&
+      note.keyPoints.length === 0 &&
+      !note.studyFocus
+    ) {
+      return null;
+    }
+
+    return note;
+  }
+
   private coerceSummaryArtifact(
     value: unknown,
     fallbackLanguage: SummaryLanguage,
@@ -359,7 +594,7 @@ export class RagArtifactCacheService {
 
   private resolveActiveSlot(
     rawActiveSlot: unknown,
-    versions: SummaryLanguageCache['versions'],
+    versions: Partial<Record<SummaryVersionSlot, unknown>> | undefined,
   ): SummaryVersionSlot {
     if (this.isSummarySlot(rawActiveSlot) && versions?.[rawActiveSlot]) {
       return rawActiveSlot;
@@ -390,6 +625,15 @@ export class RagArtifactCacheService {
     return (
       typeof value === 'string' &&
       (SUMMARY_FORMATS as readonly string[]).includes(value)
+    );
+  }
+
+  private isMindMapNodeKind(value: unknown): value is MindMapNode['kind'] {
+    return (
+      typeof value === 'string' &&
+      ['root', 'overview', 'cluster', 'insight', 'detail', 'takeaway'].includes(
+        value,
+      )
     );
   }
 }

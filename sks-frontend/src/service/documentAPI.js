@@ -64,6 +64,27 @@ const getDocumentDetails = async (documentId) => {
   return response.data;
 };
 
+const getDocumentNote = async (documentId) => {
+  const response = await apiClient.get(`/documents/${documentId}/note`);
+  return response.data;
+};
+
+const saveDocumentNote = async (documentId, content, options = {}) => {
+  const response = await apiClient.patch(`/documents/${documentId}/note`, {
+    noteId: options.noteId,
+    title: options.title,
+    content,
+  });
+  return response.data;
+};
+
+const deleteDocumentNote = async (documentId, noteId) => {
+  const response = await apiClient.delete(
+    `/documents/${documentId}/note/${encodeURIComponent(noteId)}`,
+  );
+  return response.data;
+};
+
 const updateDocumentName = async (documentId, newDocumentName) => {
   const response = await apiClient.patch(`/documents/${documentId}/update-name`, {
     newDocumentName,
@@ -134,6 +155,9 @@ export {
   searchDocuments,
   getRelatedDocuments,
   getDocumentDetails,
+  getDocumentNote,
+  saveDocumentNote,
+  deleteDocumentNote,
   fetchDocumentFile,
   openDocumentFile,
   downloadDocumentFile,

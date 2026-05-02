@@ -7,12 +7,16 @@ import { Chunk } from './entities/chunks.entity';
 import { UserDocument } from './entities/user-document.entity';
 import { Folder } from './entities/folder.entity';
 import { DocumentAskHistory } from './entities/document-ask-history.entity';
+import { StudyGpsDayChatMessage } from './entities/study-gps-day-chat-message.entity';
+import { StudyGpsPlan } from './entities/study-gps-plan.entity';
 import { UserRepository } from './repositories/user.repository';
 import { DocumentRepository } from './repositories/document.repository';
 import { ChunkRepository } from './repositories/chunks.repository';
 import { UserDocumentRepository } from './repositories/user-document.repository';
 import { FolderRepository } from './repositories/folder.repository';
 import { DocumentAskHistoryRepository } from './repositories/document-ask-history.repository';
+import { StudyGpsDayChatMessageRepository } from './repositories/study-gps-day-chat-message.repository';
+import { StudyGpsPlanRepository } from './repositories/study-gps-plan.repository';
 
 @Global()
 @Module({
@@ -35,6 +39,8 @@ import { DocumentAskHistoryRepository } from './repositories/document-ask-histor
           UserDocument,
           Folder,
           DocumentAskHistory,
+          StudyGpsPlan,
+          StudyGpsDayChatMessage,
         ],
         synchronize:
           (config.get<string>('DATABASE_SYNC') ?? 'false') === 'true',
@@ -48,6 +54,8 @@ import { DocumentAskHistoryRepository } from './repositories/document-ask-histor
       UserDocument,
       Folder,
       DocumentAskHistory,
+      StudyGpsPlan,
+      StudyGpsDayChatMessage,
     ]),
   ],
   providers: [
@@ -57,6 +65,8 @@ import { DocumentAskHistoryRepository } from './repositories/document-ask-histor
     UserDocumentRepository,
     FolderRepository,
     DocumentAskHistoryRepository,
+    StudyGpsPlanRepository,
+    StudyGpsDayChatMessageRepository,
   ],
   exports: [
     TypeOrmModule,
@@ -66,6 +76,8 @@ import { DocumentAskHistoryRepository } from './repositories/document-ask-histor
     UserDocumentRepository,
     FolderRepository,
     DocumentAskHistoryRepository,
+    StudyGpsPlanRepository,
+    StudyGpsDayChatMessageRepository,
   ],
 })
 export class DatabaseModule {}

@@ -1,7 +1,13 @@
 import { Injectable, LoggerService } from '@nestjs/common';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { ChatGoogleParams } from '@langchain/google';
-import { GeminiService } from 'src/common/llm/gemini.service';
+import {
+  GeminiService,
+  type GenerateTextOptions,
+} from 'src/common/llm/gemini.service';
+
+type StructuredModelOptions = Omit<Partial<ChatGoogleParams>, 'apiKey'> &
+  GenerateTextOptions;
 
 type StructuredGenerationOptions<TResult> = {
   input: Record<string, string>;
@@ -12,7 +18,7 @@ type StructuredGenerationOptions<TResult> = {
   operationLabel: string;
   skipJsonSchema?: boolean;
   skipFunctionCalling?: boolean;
-  modelOptions?: Omit<Partial<ChatGoogleParams>, 'apiKey'> & { model?: string };
+  modelOptions?: StructuredModelOptions;
   coerce: (value: unknown) => TResult | null;
   parseRawResponse: (rawResponse: string) => TResult;
   logger?: LoggerService;
@@ -96,7 +102,13 @@ export class RagStructuredGenerationService {
     }
 
     const rawPrompt = await fallbackPrompt.format(input);
-    const rawResponse = await this.geminiService.generateText(rawPrompt);
+    const rawResponse = await this.geminiService.generateText(
+      rawPrompt,
+      {
+        ...modelOptions,
+        responseMimeType: 'application/json',
+      },
+    );
     return parseRawResponse(rawResponse);
   }
 

@@ -1238,19 +1238,18 @@ const Dashboard = () => {
     <>
       <div className="mx-auto max-w-[1440px] animate-fade-in pb-12">
         {/* ═══ PREMIUM HERO HEADER ═══ */}
-        <div className="relative mb-10 overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-8 py-8 shadow-2xl">
-          {/* Mesh glow accents */}
-          <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-cyan-500/20 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-blue-500/15 blur-3xl" />
-          <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-72 w-72 rounded-full bg-indigo-500/10 blur-3xl" />
+        <div className="relative mb-10 overflow-hidden rounded-[32px] border border-cyan-100/80 bg-[linear-gradient(135deg,#ffffff_0%,#f8fdff_44%,#eefbff_100%)] px-8 py-8 shadow-[0_24px_80px_-42px_rgba(15,23,42,0.28)]">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/80 to-transparent" />
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,rgba(14,165,233,0.06)_48%,rgba(16,185,129,0.08)_100%)]" />
+          <div className="pointer-events-none absolute inset-x-8 bottom-0 h-20 bg-gradient-to-t from-cyan-100/50 to-transparent" />
 
           {/* Breadcrumb inside banner */}
           {folderTrail.length > 1 ? (
             <nav className="mb-4 flex flex-wrap items-center gap-2 text-[11px] font-bold tracking-[0.15em] uppercase text-slate-500">
               {folderTrail.slice(1).map((folder, index) => (
                 <span key={folder.id} className="contents">
-                  {index > 0 ? <span className="text-slate-600">/</span> : null}
-                  <NavLink to={`/app?folderId=${folder.id}`} className="transition-colors hover:text-cyan-400 cursor-pointer">
+                  {index > 0 ? <span className="text-slate-300">/</span> : null}
+                  <NavLink to={`/app?folderId=${folder.id}`} className="transition-colors hover:text-cyan-600 cursor-pointer">
                     {folder.name}
                   </NavLink>
                 </span>
@@ -1259,96 +1258,101 @@ const Dashboard = () => {
           ) : null}
 
           {/* Title row */}
-          <div className="relative z-10 flex items-start justify-between gap-6">
-            <div className="flex-1">
-              <div className="mb-1 flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-cyan-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-                  AI Active
-                </span>
-              </div>
-              <h1 className="text-4xl font-[1000] tracking-tight text-white sm:text-5xl">
-                {currentScopeLabel}
-              </h1>
-              <p className="mt-2 text-[14px] font-medium text-slate-400">
-                Manage and organize your documents with{' '}
-                <span className="font-bold text-cyan-400">SKS Intelligence</span>.
-              </p>
+          <div className="relative z-10">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-3xl">
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-cyan-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-pulse"></span>
+                    AI Active
+                  </span>
+                </div>
+                <h1 className="text-5xl font-[1000] leading-none tracking-tight text-slate-950 sm:text-6xl lg:text-[72px]">
+                  {currentScopeLabel}
+                </h1>
+                <p className="mt-2 text-[14px] font-medium text-slate-500">
+                  Manage and organize your documents with{' '}
+                  <span className="font-bold text-cyan-600">SKS Intelligence</span>.
+                </p>
 
-              {/* Inline Stats */}
-              <div className="mt-5 flex items-center gap-4">
-                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 backdrop-blur-sm">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-cyan-400">
-                    <path d="M3.5 4.75A1.75 1.75 0 0 1 5.25 3h2.44c.464 0 .909.184 1.237.513l1.31 1.31c.14.14.33.219.528.219h4.985A1.75 1.75 0 0 1 17.5 6.792v1.041H2.5V4.75Z" />
-                    <path d="M2.5 9.333h15v5.917A1.75 1.75 0 0 1 15.75 17H4.25A1.75 1.75 0 0 1 2.5 15.25V9.333Z" />
-                  </svg>
-                  <span className="text-[12px] font-black text-white">{childFolders.length}</span>
-                  <span className="text-[11px] font-medium text-slate-400">Folders</span>
-                </div>
-                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 backdrop-blur-sm">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-blue-400">
-                    <path fillRule="evenodd" d="M4 4a2 2 0 0 1 2-2h4.586A2 2 0 0 1 12 2.586L15.414 6A2 2 0 0 1 16 7.414V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4Zm2 6a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2H7a1 1 0 0 1-1-1Zm1 3a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2H7Z" clipRule="evenodd" />
-                  </svg>
-                  <span className="text-[12px] font-black text-white">{total}</span>
-                  <span className="text-[11px] font-medium text-slate-400">Documents</span>
-                </div>
-                {recentDocuments.length > 0 ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 backdrop-blur-sm">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-emerald-400">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 0 0 0-1.5h-3.25V5Z" clipRule="evenodd" />
-                    </svg>
-                    <span className="text-[12px] font-black text-white">{recentDocuments.length}</span>
-                    <span className="text-[11px] font-medium text-slate-400">Recent</span>
+                <form onSubmit={handleSearchSubmit} className="group relative mt-7 w-full max-w-2xl">
+                  <div className="absolute left-3.5 top-1/2 z-20 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-cyan-500">
+                    <SearchIcon className={`h-4 w-4 ${isSearching ? 'animate-pulse' : ''}`} />
                   </div>
-                ) : null}
+                  <input
+                    type="text"
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    placeholder="Search documents..."
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-9 text-sm font-medium text-slate-900 shadow-sm transition-all duration-200 placeholder:text-slate-400 focus:border-cyan-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                  {searchInput ? (
+                    <button
+                      type="button"
+                      onClick={handleClearSearch}
+                      className="absolute right-3 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-slate-100 text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-500"
+                      title="Clear search"
+                    >
+                      <CloseIcon className="h-3 w-3" />
+                    </button>
+                  ) : null}
+                </form>
+              </div>
+
+              <div className="flex w-full flex-col gap-5 lg:max-w-sm">
+                <div className="flex flex-col items-stretch gap-2 sm:flex-row lg:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateFolderModal(true)}
+                    className="flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold tracking-wide text-slate-700 shadow-sm transition-all duration-200 hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700"
+                  >
+                    <FolderAddIcon className="h-4 w-4 text-cyan-500" />
+                    New Folder
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowUploadModal(true)}
+                    className="flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 px-4 text-sm font-[1000] tracking-wide text-white shadow-lg shadow-cyan-500/30 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-cyan-500/50"
+                  >
+                    <UploadIcon className="h-4 w-4" />
+                    Upload
+                  </button>
+                </div>
+
+                <div className="hidden rounded-[28px] border border-white/80 bg-white/70 p-5 shadow-[0_22px_60px_-42px_rgba(14,116,144,0.65)] backdrop-blur lg:block">
+                  <div className="flex items-center gap-4">
+                    <div className="relative h-16 w-20 shrink-0">
+                      <div className="absolute left-0 top-4 h-12 w-14 rotate-[-8deg] rounded-2xl border border-cyan-100 bg-white shadow-lg shadow-cyan-100/80">
+                        <div className="mx-3 mt-4 h-1.5 rounded-full bg-cyan-200" />
+                        <div className="mx-3 mt-2 h-1.5 rounded-full bg-slate-100" />
+                      </div>
+                      <div className="absolute right-0 top-0 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-500 text-white shadow-xl shadow-cyan-500/25">
+                        <FolderAddIcon className="h-6 w-6" />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-700">Library</p>
+                      <p className="mt-1 text-lg font-[1000] tracking-tight text-slate-950">Ready to study</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-3 gap-2">
+                    <div className="rounded-2xl border border-cyan-100 bg-cyan-50/70 px-3 py-2">
+                      <p className="text-base font-[1000] text-slate-950">{childFolders.length}</p>
+                      <p className="text-[10px] font-bold text-slate-500">Folders</p>
+                    </div>
+                    <div className="rounded-2xl border border-sky-100 bg-sky-50/70 px-3 py-2">
+                      <p className="text-base font-[1000] text-slate-950">{total}</p>
+                      <p className="text-[10px] font-bold text-slate-500">Docs</p>
+                    </div>
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 py-2">
+                      <p className="text-base font-[1000] text-slate-950">{recentDocuments.length}</p>
+                      <p className="text-[10px] font-bold text-slate-500">Recent</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-
-            {/* Action Buttons */}
-            <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
-              <button
-                type="button"
-                onClick={() => setShowCreateFolderModal(true)}
-                className="flex items-center gap-2 h-10 px-4 rounded-xl bg-white/10 border border-white/20 text-white text-sm font-bold tracking-wide backdrop-blur-sm hover:bg-white/20 hover:border-white/30 transition-all duration-200"
-              >
-                <FolderAddIcon className="h-4 w-4 text-cyan-400" />
-                New Folder
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowUploadModal(true)}
-                className="flex items-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm font-[1000] tracking-wide shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50 hover:-translate-y-0.5 transition-all duration-200"
-              >
-                <UploadIcon className="h-4 w-4" />
-                Upload
-              </button>
-            </div>
-          </div>
-
-          {/* Embedded Search */}
-          <div className="relative z-10 mt-6">
-            <form onSubmit={handleSearchSubmit} className="group relative w-full max-w-xl">
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-cyan-400 transition-colors z-20">
-                <SearchIcon className={`h-4 w-4 ${isSearching ? 'animate-pulse' : ''}`} />
-              </div>
-              <input
-                type="text"
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Search documents..."
-                className="h-10 w-full rounded-xl border border-white/10 bg-white/10 pl-10 pr-9 text-sm font-medium text-white placeholder:text-slate-500 backdrop-blur-sm focus:border-cyan-500/50 focus:bg-white/15 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all duration-200"
-              />
-              {searchInput ? (
-                <button
-                  type="button"
-                  onClick={handleClearSearch}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-slate-400 hover:bg-rose-500/30 hover:text-rose-300 transition-all"
-                  title="Clear search"
-                >
-                  <CloseIcon className="h-3 w-3" />
-                </button>
-              ) : null}
-            </form>
           </div>
         </div>
 
