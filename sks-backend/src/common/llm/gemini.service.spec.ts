@@ -1,29 +1,23 @@
+import {
+  BadRequestException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ChatGoogle } from '@langchain/google';
 import { GeminiService } from './gemini.service';
 
-const mockGenerateContent = jest.fn();
 const mockEmbedContent = jest.fn();
 
 jest.mock('@google/genai', () => ({
   GoogleGenAI: jest.fn().mockImplementation(() => ({
     models: {
-      generateContent: mockGenerateContent,
       embedContent: mockEmbedContent,
     },
-  })),
-}));
-
-jest.mock('@langchain/google', () => ({
-  ChatGoogle: jest.fn().mockImplementation((params: unknown) => ({
-    params,
   })),
 }));
 
 describe('GeminiService', () => {
   let configService: Pick<ConfigService, 'get'>;
   let service: GeminiService;
-  const mockChatGoogle = ChatGoogle as unknown as jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -31,10 +25,6 @@ describe('GeminiService', () => {
       get: jest.fn((key: string) => {
         const values: Record<string, string> = {
           GEMINI_API_KEY: 'test-key',
-          GEMINI_TEXT_MODEL: 'gemini-2.5-flash',
-          GEMINI_TEXT_MODEL_FALLBACK: 'gemini-3.1-flash-lite-preview',
-          GEMINI_TEXT_MODEL_FALLBACKS:
-            'gemini-2.5-flash-lite,gemini-flash-lite-latest',
           GEMINI_EMBEDDING_MODEL: 'gemini-embedding-001',
         };
 
@@ -44,73 +34,34 @@ describe('GeminiService', () => {
     service = new GeminiService(configService as ConfigService);
   });
 
-  it('fails over to the next text model when the primary model is quota-limited', async () => {
-    mockGenerateContent
-      .mockRejectedValueOnce(
-        new Error(
-          'got status: 429 Too Many Requests. RESOURCE_EXHAUSTED. Please retry in 45s.',
-        ),
-      )
-      .mockResolvedValueOnce({ text: 'Recovered response' });
-
-    await expect(service.generateText('Explain this document')).resolves.toBe(
-      'Recovered response',
-    );
-    expect(mockGenerateContent).toHaveBeenNthCalledWith(1, {
-      model: 'gemini-2.5-flash',
-      contents: 'Explain this document',
+  it('creates embeddings with the configured Gemini embedding model', async () => {
+    mockEmbedContent.mockResolvedValueOnce({
+      embeddings: [{ values: [0.1, 0.2, 0.3] }],
     });
-    expect(mockGenerateContent).toHaveBeenNthCalledWith(2, {
-      model: 'gemini-3.1-flash-lite-preview',
-      contents: 'Explain this document',
+
+    await expect(service.createEmbedding('Document text')).resolves.toEqual([
+      0.1, 0.2, 0.3,
+    ]);
+    expect(mockEmbedContent).toHaveBeenCalledWith({
+      model: 'gemini-embedding-001',
+      contents: 'Document text',
     });
   });
 
-  it('passes generation options to raw Gemini text generation', async () => {
-    mockGenerateContent.mockResolvedValueOnce({ text: 'JSON response' });
-
-    await service.generateText('Return JSON', {
-      temperature: 0.35,
-      topP: 0.92,
-      maxOutputTokens: 4200,
-    });
-
-    expect(mockGenerateContent).toHaveBeenCalledWith({
-      model: 'gemini-2.5-flash',
-      contents: 'Return JSON',
-      config: {
-        temperature: 0.35,
-        topP: 0.92,
-        maxOutputTokens: 4200,
-      },
-    });
+  it('rejects blank embedding input', async () => {
+    await expect(service.createEmbedding('   ')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(mockEmbedContent).not.toHaveBeenCalled();
   });
 
-  it('prefers an available fallback model for new chat models after a retryable failure', async () => {
-    mockGenerateContent
-      .mockRejectedValueOnce(
-        new Error('got status: 429 Too Many Requests. quota exceeded.'),
-      )
-      .mockResolvedValueOnce({ text: 'Recovered response' });
-
-    await service.generateText('Retry with fallback');
-    service.createChatModel({ temperature: 0.2 });
-
-    expect(mockChatGoogle).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: 'gemini-3.1-flash-lite-preview',
-        apiKey: 'test-key',
-        temperature: 0.2,
-      }),
+  it('maps retryable embedding failures to service unavailable', async () => {
+    mockEmbedContent.mockRejectedValueOnce(
+      new Error('429 Too Many Requests. RESOURCE_EXHAUSTED'),
     );
-  });
 
-  it('does not hide non-retryable errors behind fallback logic', async () => {
-    mockGenerateContent.mockRejectedValueOnce(new Error('400 Bad Request'));
-
-    await expect(service.generateText('bad prompt')).rejects.toThrow(
-      '400 Bad Request',
-    );
-    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+    await expect(
+      service.createEmbedding('Document text'),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });

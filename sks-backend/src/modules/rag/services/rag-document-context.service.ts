@@ -3,50 +3,18 @@ import { Chunk } from 'src/database/entities/chunks.entity';
 import { Document } from 'src/database/entities/document.entity';
 import { ChunkRepository } from 'src/database/repositories/chunks.repository';
 import { DocumentRepository } from 'src/database/repositories/document.repository';
+import { normalizeForSearch } from 'src/common/utils/text-normalization.util';
 import { repairMojibakeText } from 'src/common/utils/text-encoding';
 import { RagSource } from '../types/rag.types';
-
-const SOURCE_SNIPPET_LENGTH = 280;
-const CONTEXT_SEARCH_STOPWORDS = new Set([
-  'a',
-  'an',
-  'and',
-  'are',
-  'as',
-  'at',
-  'be',
-  'by',
-  'for',
-  'from',
-  'in',
-  'is',
-  'it',
-  'of',
-  'on',
-  'or',
-  'the',
-  'this',
-  'to',
-  'with',
-  'la',
-  'va',
-  've',
-  'voi',
-  'cua',
-  'cho',
-  'cac',
-  'nhung',
-  'trong',
-  'ngoai',
-  'mot',
-  'nay',
-  'do',
-]);
+import { SOURCE_SNIPPET_LENGTH, CONTEXT_SEARCH_STOPWORDS } from '../constants';
 
 type RepresentativeChunk = Pick<
   Chunk,
   'chunkIndex' | 'chunkText' | 'pageNumber' | 'sectionTitle'
 >;
+
+const MIN_MEANINGFUL_CHUNK_LENGTH = 80;
+const SECTION_START_LIMIT = 18;
 
 @Injectable()
 export class RagDocumentContextService {
@@ -75,8 +43,12 @@ export class RagDocumentContextService {
     documentId: string,
     maxChunks: number,
   ): Promise<RepresentativeChunk[]> {
-    const orderedChunks = await this.chunkRepository.findByDocument(documentId);
-    return this.selectRepresentativeChunks(orderedChunks, maxChunks);
+    const orderedChunks = await this.getCleanOrderedChunks(documentId);
+
+    return this.selectStructureAwareRepresentativeChunks(
+      orderedChunks,
+      maxChunks,
+    );
   }
 
   async getRelevantChunks(
@@ -84,7 +56,7 @@ export class RagDocumentContextService {
     query: string,
     maxChunks: number,
   ): Promise<RepresentativeChunk[]> {
-    const orderedChunks = await this.chunkRepository.findByDocument(documentId);
+    const orderedChunks = await this.getCleanOrderedChunks(documentId);
 
     if (orderedChunks.length <= maxChunks) {
       return orderedChunks;
@@ -124,16 +96,160 @@ export class RagDocumentContextService {
         0,
         SOURCE_SNIPPET_LENGTH,
       ),
-      score: 1,
+      score: null,
     }));
   }
 
-  private selectRepresentativeChunks(
+  private async getCleanOrderedChunks(
+    documentId: string,
+  ): Promise<RepresentativeChunk[]> {
+    const chunks = await this.chunkRepository.findByDocument(documentId);
+
+    return chunks
+      .map((chunk) => ({
+        chunkIndex: chunk.chunkIndex,
+        chunkText: this.normalizeContextText(chunk.chunkText),
+        pageNumber: chunk.pageNumber,
+        sectionTitle: this.normalizeContextText(chunk.sectionTitle),
+      }))
+      .filter((chunk) => this.isMeaningfulContextChunk(chunk))
+      .sort((left, right) => left.chunkIndex - right.chunkIndex);
+  }
+
+  private isMeaningfulContextChunk(chunk: RepresentativeChunk): boolean {
+    const text = this.normalizeContextText(chunk.chunkText);
+    const sectionTitle = this.normalizeContextText(chunk.sectionTitle);
+
+    if (!text) {
+      return false;
+    }
+
+    if (this.looksLikeLowValueNoise(text)) {
+      return false;
+    }
+
+    if (text.length >= MIN_MEANINGFUL_CHUNK_LENGTH) {
+      return true;
+    }
+
+    return Boolean(sectionTitle && text.length >= 30);
+  }
+
+  private looksLikeLowValueNoise(value: string): boolean {
+    const text = this.normalizeContextText(value);
+
+    if (!text) {
+      return true;
+    }
+
+    const alphaNumericChars = text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
+    const totalChars = text.length;
+    const alphaNumericRatio = alphaNumericChars / Math.max(totalChars, 1);
+
+    if (totalChars < 20) {
+      return true;
+    }
+
+    if (alphaNumericRatio < 0.45) {
+      return true;
+    }
+
+    const repeatedSymbols = text.match(/[._=\-–—]{5,}/g);
+    if (repeatedSymbols && repeatedSymbols.length >= 2) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private selectSectionStartChunks(
+    chunks: RepresentativeChunk[],
+  ): RepresentativeChunk[] {
+    const selected: RepresentativeChunk[] = [];
+    let previousSection = '';
+
+    for (const chunk of chunks) {
+      const currentSection = this.normalizeSectionKey(chunk.sectionTitle);
+
+      if (!currentSection) {
+        continue;
+      }
+
+      if (currentSection !== previousSection) {
+        selected.push(chunk);
+        previousSection = currentSection;
+      }
+
+      if (selected.length >= SECTION_START_LIMIT) {
+        break;
+      }
+    }
+
+    return selected;
+  }
+
+  private selectStructureAwareRepresentativeChunks(
     chunks: RepresentativeChunk[],
     maxChunks: number,
   ): RepresentativeChunk[] {
+    if (maxChunks <= 0) {
+      return [];
+    }
+
     if (chunks.length <= maxChunks) {
       return chunks;
+    }
+
+    const selected = new Map<number, RepresentativeChunk>();
+
+    const headCount = Math.min(6, maxChunks);
+    for (const chunk of chunks.slice(0, headCount)) {
+      selected.set(chunk.chunkIndex, chunk);
+    }
+
+    for (const chunk of this.selectSectionStartChunks(chunks)) {
+      if (selected.size >= maxChunks) {
+        break;
+      }
+
+      selected.set(chunk.chunkIndex, chunk);
+    }
+
+    if (selected.size < maxChunks) {
+      const remainingCount = maxChunks - selected.size;
+      const distributedChunks = this.selectEvenlyFromSortedChunks(
+        chunks,
+        remainingCount,
+      );
+
+      for (const chunk of distributedChunks) {
+        if (selected.size >= maxChunks) {
+          break;
+        }
+
+        selected.set(chunk.chunkIndex, chunk);
+      }
+    }
+
+    return this.sortChunksByIndex([...selected.values()]);
+  }
+
+  private selectEvenlyFromSortedChunks(
+    chunks: RepresentativeChunk[],
+    maxChunks: number,
+  ): RepresentativeChunk[] {
+    if (maxChunks <= 0) {
+      return [];
+    }
+
+    if (chunks.length <= maxChunks) {
+      return chunks;
+    }
+
+    if (maxChunks === 1) {
+      return [chunks[0]].filter((chunk): chunk is RepresentativeChunk =>
+        Boolean(chunk),
+      );
     }
 
     const selectedIndices = new Set<number>();
@@ -157,8 +273,12 @@ export class RagDocumentContextService {
     const tokens = this.extractSearchTokens(query);
     const phrases = this.extractSearchPhrases(query);
 
+    if (maxChunks <= 0) {
+      return [];
+    }
+
     if (tokens.length === 0 && phrases.length === 0) {
-      return this.selectRepresentativeChunks(chunks, maxChunks);
+      return this.selectStructureAwareRepresentativeChunks(chunks, maxChunks);
     }
 
     const scoredChunks = chunks
@@ -176,7 +296,7 @@ export class RagDocumentContextService {
       });
 
     if ((scoredChunks[0]?.score ?? 0) <= 0) {
-      return this.selectRepresentativeChunks(chunks, maxChunks);
+      return this.selectStructureAwareRepresentativeChunks(chunks, maxChunks);
     }
 
     const selectedPositions = new Set<number>();
@@ -188,7 +308,10 @@ export class RagDocumentContextService {
 
       selectedPositions.add(scoredChunk.position);
 
-      for (const neighbor of [scoredChunk.position - 1, scoredChunk.position + 1]) {
+      for (const neighbor of [
+        scoredChunk.position - 1,
+        scoredChunk.position + 1,
+      ]) {
         if (
           selectedPositions.size < maxChunks &&
           neighbor >= 0 &&
@@ -210,8 +333,8 @@ export class RagDocumentContextService {
     tokens: string[],
     phrases: string[],
   ): number {
-    const normalizedText = this.normalizeForSearch(chunk.chunkText);
-    const normalizedSection = this.normalizeForSearch(chunk.sectionTitle ?? '');
+    const normalizedText = normalizeForSearch(chunk.chunkText);
+    const normalizedSection = normalizeForSearch(chunk.sectionTitle ?? '');
     const combinedText = `${normalizedSection} ${normalizedText}`.trim();
     let score = 0;
 
@@ -234,8 +357,20 @@ export class RagDocumentContextService {
     return score;
   }
 
+  private sortChunksByIndex(
+    chunks: RepresentativeChunk[],
+  ): RepresentativeChunk[] {
+    return [...chunks].sort(
+      (left, right) => left.chunkIndex - right.chunkIndex,
+    );
+  }
+
+  private normalizeSectionKey(value: string | null | undefined): string {
+    return normalizeForSearch(this.normalizeContextText(value));
+  }
+
   private extractSearchTokens(value: string): string[] {
-    const normalizedValue = this.normalizeForSearch(value);
+    const normalizedValue = normalizeForSearch(value);
     const seen = new Set<string>();
 
     return normalizedValue
@@ -258,7 +393,7 @@ export class RagDocumentContextService {
 
     return value
       .split(/[\n>,;|]+/)
-      .map((phrase) => this.normalizeForSearch(phrase))
+      .map((phrase) => normalizeForSearch(phrase))
       .filter((phrase) => phrase.length >= 8)
       .filter((phrase) => phrase.split(/\s+/).length >= 2)
       .filter((phrase) => {
@@ -272,21 +407,10 @@ export class RagDocumentContextService {
       .slice(0, 12);
   }
 
-  private normalizeForSearch(value: string | null | undefined): string {
-    return this.normalizeContextText(value)
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/đ/g, 'd')
-      .replace(/Đ/g, 'd')
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
   private normalizeContextText(value: string | null | undefined): string {
     return repairMojibakeText(value)
-      .replace(/\u0000/g, '')
+      .split('\u0000')
+      .join('')
       .replace(/[ \t]+/g, ' ')
       .trim();
   }

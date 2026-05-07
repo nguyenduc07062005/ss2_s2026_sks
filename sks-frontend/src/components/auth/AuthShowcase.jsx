@@ -1,4 +1,4 @@
-import BrandLogo from "../BrandLogo.jsx";
+import BrandBadge from "../BrandBadge.jsx";
 
 const variants = {
   teal: {
@@ -59,10 +59,8 @@ const AuthShowcase = ({ title, description, variant = "teal" }) => {
 
       <div className="relative flex h-full flex-col justify-between gap-12">
         <div>
-          <div className="mb-4 flex justify-start">
-            <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-white p-2 shadow-2xl ring-4 ring-white/20">
-              <BrandLogo className="h-full w-full" />
-            </div>
+          <div className="mb-6 flex justify-start">
+            <BrandBadge size={38} dark />
           </div>
 
           <p className="text-xs font-bold uppercase tracking-widest text-white/60">

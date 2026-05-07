@@ -1,19 +1,52 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { getProfile } from '../../service/authAPI.js';
 import { clearToken } from '../../utils/auth.js';
+import { SKSMark } from '../BrandBadge.jsx';
+
+const WORKSPACE_SCROLL_STORAGE_KEY = 'sks.workspace.scrollPositions.v1';
 
 const NAV_ITEMS = [
   { to: '/app', label: 'Workspace', end: true },
   { to: '/app/study-gps', label: 'Study GPS' },
+  { to: '/app/quiz', label: 'Quiz' },
   { to: '/app/favorites', label: 'Favorites' },
 ];
+
+const getWindowScrollTop = () =>
+  window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+
+const loadStoredScrollPositions = () => {
+  try {
+    const rawValue = window.sessionStorage.getItem(WORKSPACE_SCROLL_STORAGE_KEY);
+    const parsedValue = rawValue ? JSON.parse(rawValue) : {};
+
+    return parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue)
+      ? parsedValue
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveStoredScrollPositions = (positions) => {
+  try {
+    window.sessionStorage.setItem(
+      WORKSPACE_SCROLL_STORAGE_KEY,
+      JSON.stringify(positions),
+    );
+  } catch {
+    // In-memory scroll restoration still works if storage is unavailable.
+  }
+};
 
 const WorkspaceShell = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [profileName, setProfileName] = useState('Workspace member');
   const [isScrolled, setIsScrolled] = useState(false);
+  const scrollPositionsRef = useRef(loadStoredScrollPositions());
+  const currentRouteKey = `${location.pathname}${location.search}`;
 
   const isDocumentViewer = /^\/app\/documents\//.test(location.pathname);
   const isHeaderCompact = isScrolled || isDocumentViewer;
@@ -40,19 +73,41 @@ const WorkspaceShell = () => {
     const handleScroll = (e) => {
       const scrollTop =
         (e.target && e.target.scrollTop) ||
-        window.scrollY ||
-        document.documentElement.scrollTop ||
+        getWindowScrollTop() ||
         0;
       setIsScrolled(scrollTop > 20);
     };
 
-    // Use capturing phase (true) to catch ALL scroll events, even from inner containers
     window.addEventListener('scroll', handleScroll, true);
     return () => {
       isActive = false;
       window.removeEventListener('scroll', handleScroll, true);
     };
   }, []);
+
+  useEffect(() => {
+    const handleScrollPosition = () => {
+      scrollPositionsRef.current[currentRouteKey] = getWindowScrollTop();
+      saveStoredScrollPositions(scrollPositionsRef.current);
+    };
+
+    window.addEventListener('scroll', handleScrollPosition, { passive: true });
+    window.addEventListener('beforeunload', handleScrollPosition);
+
+    return () => {
+      window.removeEventListener('scroll', handleScrollPosition);
+      window.removeEventListener('beforeunload', handleScrollPosition);
+    };
+  }, [currentRouteKey]);
+
+  useLayoutEffect(() => {
+    const savedScrollTop = scrollPositionsRef.current[currentRouteKey] || 0;
+
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: savedScrollTop, left: 0, behavior: 'auto' });
+      setIsScrolled(savedScrollTop > 20);
+    });
+  }, [currentRouteKey]);
 
   const profileInitial = useMemo(() => {
     const trimmedName = profileName.trim();
@@ -66,7 +121,7 @@ const WorkspaceShell = () => {
 
   return (
     <main className={`text-slate-900 relative font-sans ${isDocumentViewer ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
-      {/* Dynamic Background Container (fixes horizontal scroll without breaking vertical scrollbars) */}
+      {/* Dynamic Background */}
       <div className="fixed inset-0 -z-10 overflow-hidden bg-slate-50/50">
         <div className="absolute top-0 right-0 h-[50rem] w-[50rem] opacity-[0.12] mix-blend-multiply blur-3xl transform translate-x-1/3 -translate-y-1/2 rounded-full bg-gradient-to-tr from-cyan-400 via-blue-400 to-sky-300 pointer-events-none animate-spin-slow" />
         <div className="absolute top-40 left-0 h-[40rem] w-[40rem] opacity-[0.12] mix-blend-multiply blur-3xl transform -translate-x-1/2 rounded-full bg-gradient-to-bl from-cyan-300 via-teal-300 to-emerald-400 pointer-events-none" />
@@ -82,27 +137,24 @@ const WorkspaceShell = () => {
         <div className="relative mx-auto flex w-full max-w-[1440px] items-center justify-between px-6 lg:px-10">
 
           <div className="flex items-center gap-8 min-w-0">
-            {/* ── Brand Logo (Synced) ── */}
             <button
               type="button"
               onClick={() => navigate('/app')}
-              className="group flex items-center gap-4 transition-all outline-none"
+              className="group flex items-center gap-3 outline-none"
+              aria-label="Go to workspace home"
             >
-              <div className="relative flex h-9 w-9 items-center justify-center">
-                <div className="absolute inset-0 animate-pulse rounded-2xl bg-cyan-500/20 blur-xl group-hover:bg-cyan-500/30 transition-colors" />
-                <div className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-slate-900 shadow-xl transition-all duration-500 hover:rotate-6 hover:scale-110">
-                  <span className="font-display text-[14px] font-black italic text-cyan-400">S</span>
-                </div>
+              <div className="transition-all duration-200 group-hover:scale-105 group-active:scale-95">
+                <SKSMark size={36} />
               </div>
-              <div className="hidden sm:flex flex-col items-start leading-none pointer-events-none">
-                <span className="text-lg font-black tracking-tighter text-slate-900">SKS</span>
-                <div className="mt-0.5 flex items-center gap-1">
-                  <span className="relative flex h-1 w-1">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex h-1 w-1 rounded-full bg-emerald-500"></span>
-                  </span>
-                  <span className="text-[7px] font-black uppercase tracking-[0.2em] text-cyan-600/80">AI Active</span>
-                </div>
+              <div className="hidden sm:flex flex-col leading-none">
+                <span className="text-[13px] font-black text-slate-900"
+                      style={{ fontFamily: "'Inter',sans-serif", letterSpacing: '-0.03em' }}>
+                  Smart Knowledge
+                </span>
+                <span className="mt-[3px] text-[8px] font-semibold uppercase tracking-[0.22em] text-slate-400"
+                      style={{ fontFamily: "'Inter',sans-serif" }}>
+                  System
+                </span>
               </div>
             </button>
 
@@ -131,8 +183,6 @@ const WorkspaceShell = () => {
           </div>
 
           <div className="flex items-center gap-4">
-
-            {/* Profile & Logout (Universal Style) */}
             <div className={`flex items-center gap-3 ${isDocumentViewer ? 'ml-2' : 'ml-6'}`}>
               <div className="group relative flex items-center gap-3 cursor-pointer">
                 <div className="relative flex h-9 w-9 items-center justify-center">

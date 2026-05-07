@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { StudyGpsDayChatMessage as StudyGpsDayChatMessageEntity } from 'src/database/entities/study-gps-day-chat-message.entity';
@@ -25,15 +26,16 @@ import {
 import { GenerateStudyGpsDayChatDto } from '../dtos/generate-study-gps-day-chat.dto';
 import { GenerateStudyGpsDto } from '../dtos/generate-study-gps.dto';
 import { parseJsonWithRepair } from '../utils/llm-json';
+import { getLanguageName, toErrorMessage } from '../shared-rag.util';
+import {
+  RECENT_STUDY_GPS_DAY_CHAT_MESSAGES,
+  MAX_STUDY_GPS_DAY_CHAT_MESSAGES,
+} from '../constants';
+import { RagContextBuilderService } from './rag-context-builder.service';
 import { RagDocumentContextService } from './rag-document-context.service';
 import { RagIndexingService } from './rag-indexing.service';
 import { RagQuestionAnsweringService } from './rag-question-answering.service';
 import { RagStructuredGenerationService } from './rag-structured-generation.service';
-
-const STUDY_GPS_CHUNKS_PER_DOCUMENT = 7;
-const STUDY_GPS_CONTEXT_SNIPPET_LENGTH = 900;
-const RECENT_STUDY_GPS_DAY_CHAT_MESSAGES = 10;
-const MAX_STUDY_GPS_DAY_CHAT_MESSAGES = 40;
 
 const STUDY_GPS_PROMPT = [
   'You are SKS Study GPS, an academic learning-route assistant.',
@@ -133,16 +135,7 @@ const STUDY_GPS_OUTPUT_SCHEMA = {
   required: ['dailyRoute'],
 } as const;
 
-type StudyGpsSourceChunk = {
-  chunkIndex: number;
-  chunkText: string;
-  pageNumber: number | null;
-  sectionTitle: string | null;
-};
-
-type StudyGpsSourceDocument = StudyGpsDocumentRef & {
-  chunks: StudyGpsSourceChunk[];
-};
+type StudyGpsSourceDocument = StudyGpsDocumentRef;
 
 @Injectable()
 export class RagStudyGpsService {
@@ -156,6 +149,7 @@ export class RagStudyGpsService {
   constructor(
     private readonly ragIndexingService: RagIndexingService,
     private readonly ragDocumentContextService: RagDocumentContextService,
+    private readonly ragContextBuilderService: RagContextBuilderService,
     private readonly ragQuestionAnsweringService: RagQuestionAnsweringService,
     private readonly ragStructuredGenerationService: RagStructuredGenerationService,
     private readonly userDocumentRepository: UserDocumentRepository,
@@ -182,13 +176,22 @@ export class RagStudyGpsService {
       documentIds,
     );
     const language = dto.language ?? 'en';
+    const studyGpsContext =
+      await this.ragContextBuilderService.buildStudyGpsContext(sourceDocuments);
+
+    if (studyGpsContext.chunks.length === 0) {
+      throw new BadRequestException(
+        'Selected documents have no indexed content for Study GPS.',
+      );
+    }
+
     const input = {
       goalLabel: this.getGoalLabel(dto.goal),
       levelLabel: this.getLevelLabel(dto.level),
       daysLeft: String(dto.daysLeft),
       hoursPerDay: String(dto.hoursPerDay),
-      languageName: this.getLanguageName(language),
-      context: this.buildStudyGpsContext(sourceDocuments),
+      languageName: getLanguageName(language),
+      context: studyGpsContext.text,
     };
     let plan: StudyGpsPlanContent;
 
@@ -210,14 +213,16 @@ export class RagStudyGpsService {
           this.parseRawStudyGpsPlan(rawResponse),
         logger: this.logger,
       });
-      plan = this.normalizeStudyGpsPlan(generatedPlan, sourceDocuments, dto);
+      plan = this.normalizeStudyGpsPlan(generatedPlan, dto);
     } catch (generationError) {
       this.logger.warn(
-        `Study GPS generation used deterministic fallback: ${this.toErrorMessage(
+        `Study GPS generation failed quality checks: ${toErrorMessage(
           generationError,
         )}`,
       );
-      plan = this.buildFallbackStudyGpsPlan(sourceDocuments, dto);
+      throw new ServiceUnavailableException(
+        'Study GPS could not create a reliable learning route from the selected documents. Please regenerate or choose clearer source documents.',
+      );
     }
 
     const savedPlan = await this.studyGpsPlanRepository.saveActivePlan(
@@ -241,10 +246,7 @@ export class RagStudyGpsService {
     ownerId: string,
     dto: GenerateStudyGpsDayChatDto,
   ): Promise<StudyGpsDayChatResponse> {
-    const context = await this.resolveStudyGpsDayChatContext(
-      ownerId,
-      dto.day,
-    );
+    const context = await this.resolveStudyGpsDayChatContext(ownerId, dto.day);
     const previousMessages =
       await this.studyGpsDayChatMessageRepository.findRecentByPlanAndDay(
         ownerId,
@@ -320,10 +322,14 @@ export class RagStudyGpsService {
       };
     }
 
+    const languageInstruction =
+      context.activePlan.language === 'vi'
+        ? 'Write the first assistant message in Vietnamese (tiếng Việt).'
+        : 'Write the first assistant message in English.';
     const openingQuestion = [
       'Start this Study GPS day chat.',
-      'Write the first assistant message in English.',
-      'Mention today\'s focus naturally and invite the learner to send the first topic, question, or confusing point.',
+      languageInstruction,
+      "Mention today's focus naturally and invite the learner to send the first topic, question, or confusing point.",
       'Do not reuse the old fixed opener that lists review, explanation, practice, and outline options.',
       'Do not list generic options. Keep it short and conversational.',
     ].join(' ');
@@ -416,10 +422,15 @@ export class RagStudyGpsService {
       );
     }
 
-    const dayGoal = this.normalizePlanText(routeDay.goal) || `Day ${day}`;
-    const dayTasks = this.normalizeStringArray(routeDay.tasks, [], 8).filter(
-      (task) => !this.isGenericStudyTask(task),
-    );
+    const dayGoal =
+      this.normalizePlanText(routeDay.goal, activePlan.language) ||
+      `Day ${day}`;
+    const dayTasks = this.normalizeStringArray(
+      routeDay.tasks,
+      [],
+      8,
+      activePlan.language,
+    ).filter((task) => !this.isGenericStudyTask(task));
     const documentIds = activePlan.documents.map((document) => document.id);
     const studyContext = this.buildStudyGpsDayChatContext({
       day,
@@ -478,7 +489,7 @@ export class RagStudyGpsService {
       );
     } catch (error) {
       this.logger.warn(
-        `Study GPS day chat trim failed for day ${day}: ${this.toErrorMessage(
+        `Study GPS day chat trim failed for day ${day}: ${toErrorMessage(
           error,
         )}`,
       );
@@ -498,7 +509,6 @@ export class RagStudyGpsService {
   private async loadSourceDocuments(
     ownerId: string,
     documentIds: string[],
-    maxChunks = STUDY_GPS_CHUNKS_PER_DOCUMENT,
   ): Promise<StudyGpsSourceDocument[]> {
     const sourceDocuments: StudyGpsSourceDocument[] = [];
 
@@ -513,19 +523,9 @@ export class RagStudyGpsService {
         throw new NotFoundException('Document not found or not owned by user');
       }
 
-      await this.ragIndexingService.ensureDocumentIndexed(documentId);
-
-      const chunks =
-        await this.ragDocumentContextService.getRepresentativeChunks(
-          documentId,
-          maxChunks,
-        );
-
-      if (chunks.length === 0) {
-        throw new BadRequestException(
-          `Document "${userDocument.documentName || userDocument.document.title}" has no indexed content for Study GPS.`,
-        );
-      }
+      await this.ragIndexingService.ensureDocumentIndexed(documentId, {
+        waitIfIndexing: true,
+      });
 
       sourceDocuments.push({
         id: documentId,
@@ -533,41 +533,10 @@ export class RagStudyGpsService {
           this.normalizeText(userDocument.documentName) ||
           this.normalizeText(userDocument.document.title) ||
           'Untitled document',
-        chunks,
       });
     }
 
     return sourceDocuments;
-  }
-
-  private buildStudyGpsContext(documents: StudyGpsSourceDocument[]): string {
-    return documents
-      .map((document, documentIndex) => {
-        const chunkContext = document.chunks
-          .map((chunk, chunkIndex) => {
-            const location = [
-              `Excerpt ${chunkIndex + 1}`,
-              chunk.pageNumber ? `Page ${chunk.pageNumber}` : null,
-              chunk.sectionTitle ? `Section ${chunk.sectionTitle}` : null,
-            ]
-              .filter(Boolean)
-              .join(' | ');
-
-            return `[${location}]\n${this.truncateText(
-              chunk.chunkText,
-              STUDY_GPS_CONTEXT_SNIPPET_LENGTH,
-            )}`;
-          })
-          .join('\n\n');
-
-        return [
-          `Document ${documentIndex + 1}`,
-          `Document ID: ${document.id}`,
-          `Title: ${document.title}`,
-          chunkContext,
-        ].join('\n');
-      })
-      .join('\n\n---\n\n');
   }
 
   private buildStudyGpsDayChatContext(options: {
@@ -584,7 +553,6 @@ export class RagStudyGpsService {
       'This is not a fixed generated lesson. Respond to the learner message and guide the session conversationally.',
       'Use the selected documents when they are relevant. If the retrieved document context is weak, say so naturally and ask what part the learner wants to clarify.',
       'Do not mention internal retrieval terms such as chunk, vector, embedding, raw context, source chunk, or document id.',
-      'For the first assistant opener, write in English.',
       'For learner messages, reply in the same language as the learner message.',
       '',
       'Study GPS route context:',
@@ -649,104 +617,44 @@ export class RagStudyGpsService {
 
   private normalizeStudyGpsPlan(
     plan: StudyGpsPlanContent,
-    documents: StudyGpsSourceDocument[],
     dto: GenerateStudyGpsDto,
   ): StudyGpsPlanContent {
-    const fallbackPlan = this.buildFallbackStudyGpsPlan(documents, dto);
     const dailyRoute = this.normalizeDailyRoute(
       plan.dailyRoute,
-      fallbackPlan.dailyRoute,
       dto.daysLeft,
+      dto.language ?? 'en',
     );
 
-    return {
+    const normalizedPlan = {
       dailyRoute,
     };
+
+    if (!this.isReliableStudyGpsPlan(normalizedPlan, dto.daysLeft)) {
+      throw new Error(
+        'Study GPS generation returned a generic or incomplete route.',
+      );
+    }
+
+    return normalizedPlan;
   }
 
   private normalizeDailyRoute(
     dailyRoute: StudyGpsDailyRouteDay[],
-    fallback: StudyGpsDailyRouteDay[],
     daysLeft: number,
+    language: SummaryLanguage = 'en',
   ): StudyGpsDailyRouteDay[] {
-    const sourceRoute = dailyRoute.length > 0 ? dailyRoute : fallback;
-    const normalizedRoute = sourceRoute
-      .slice(0, daysLeft)
-      .map((day, index) => {
-        const tasks = this.normalizeStringArray(
-          day.tasks,
-          fallback[index]?.tasks ?? [],
-          6,
-        ).filter((task) => !this.isGenericStudyTask(task));
-
-        return {
-          day: index + 1,
-          goal: this.normalizePlanText(day.goal) || fallback[index]?.goal,
-          tasks,
-        };
-      });
-
-    if (normalizedRoute.length >= daysLeft) {
-      return normalizedRoute;
-    }
-
-    return [
-      ...normalizedRoute,
-      ...fallback.slice(normalizedRoute.length, daysLeft),
-    ];
-  }
-
-  private buildFallbackStudyGpsPlan(
-    documents: StudyGpsSourceDocument[],
-    dto: GenerateStudyGpsDto,
-  ): StudyGpsPlanContent {
-    return {
-      dailyRoute: this.buildFallbackDailyRoute(documents, dto),
-    };
-  }
-
-  private buildFallbackDailyRoute(
-    documents: StudyGpsSourceDocument[],
-    dto: GenerateStudyGpsDto,
-  ): StudyGpsDailyRouteDay[] {
-    const isVietnamese = dto.language === 'vi';
-
-    return Array.from({ length: dto.daysLeft }, (_, index) => {
-      const document = documents[index % documents.length];
-      const isLastDay = index === dto.daysLeft - 1;
+    return dailyRoute.slice(0, daysLeft).map((day, index) => {
+      const tasks = this.normalizeStringArray(
+        day.tasks,
+        [],
+        6,
+        language,
+      ).filter((task) => !this.isGenericStudyTask(task));
 
       return {
         day: index + 1,
-        goal: isLastDay
-          ? isVietnamese
-            ? 'Tổng ôn và kiểm tra lại lỗ hổng'
-            : 'Review and close remaining gaps'
-          : isVietnamese
-            ? `Học trọng tâm: ${document.title}`
-            : `Main focus: ${document.title}`,
-        tasks: isLastDay
-          ? isVietnamese
-            ? [
-                'Ôn lại các ý chính đã ghi.',
-                'Kiểm tra các phần còn yếu hoặc chưa giải thích được.',
-                'Tóm tắt lộ trình bằng ngôn ngữ của bạn.',
-              ]
-            : [
-                'Review the strongest notes',
-                'Check weak areas',
-                'Summarize the route in your own words',
-              ]
-          : isVietnamese
-            ? [
-                `Đọc ${document.title} để nắm nội dung chính.`,
-                'Ghi lại ý chính, ví dụ và câu hỏi còn chưa rõ.',
-                'Liên kết nội dung vừa học với mục tiêu học tập hiện tại.',
-              ]
-            : [
-                `Study ${document.title}`,
-                'Capture key ideas and examples',
-                'Connect the material to the learning goal',
-              ],
+        goal: this.normalizePlanText(day.goal, language),
+        tasks,
       };
     });
   }
@@ -779,10 +687,6 @@ export class RagStudyGpsService {
       generatedAt: plan.generatedAt.toISOString(),
       updatedAt: plan.updatedAt.toISOString(),
     };
-  }
-
-  private getLanguageName(language: SummaryLanguage): string {
-    return language === 'vi' ? 'Vietnamese' : 'English';
   }
 
   private getGoalLabel(goal: StudyGpsGoal): string {
@@ -828,9 +732,10 @@ export class RagStudyGpsService {
     value: string[],
     fallback: string[],
     maxItems: number,
+    language: SummaryLanguage = 'en',
   ): string[] {
     const normalized = value
-      .map((item) => this.normalizePlanText(item))
+      .map((item) => this.normalizePlanText(item, language))
       .filter(Boolean)
       .slice(0, maxItems);
 
@@ -858,15 +763,64 @@ export class RagStudyGpsService {
       /ask\s+yourself/i,
       /check\s+your\s+understanding/i,
       /spend\s+\d*\s*hours?/i,
+      /\bstudy\s+(?:the\s+)?(?:material|document|notes?)\b/i,
+      /\breview\s+(?:the\s+)?(?:material|document|notes?)\b/i,
+      /\bgo\s+over\s+(?:the\s+)?(?:material|document|notes?)\b/i,
+      /\bhọc\s+(?:bài|tài liệu|nội dung)\b/i,
+      /\bôn\s+(?:bài|lại\s+tài liệu|nội dung)\b/i,
     ].some((pattern) => pattern.test(normalizedValue));
   }
 
-  private normalizePlanText(value: string | null | undefined): string {
+  private isReliableStudyGpsPlan(
+    plan: StudyGpsPlanContent,
+    daysLeft: number,
+  ): boolean {
+    if (plan.dailyRoute.length !== daysLeft) {
+      return false;
+    }
+
+    return plan.dailyRoute.every((day) => {
+      const combinedTasks = day.tasks.join(' ');
+
+      return (
+        day.day > 0 &&
+        Boolean(day.goal) &&
+        day.tasks.length > 0 &&
+        !this.containsInternalReference(combinedTasks) &&
+        day.tasks.some((task) => this.hasActionableStudyTask(task))
+      );
+    });
+  }
+
+  private containsInternalReference(value: string): boolean {
+    return /\b(chunk|excerpt|reference|embedding|vector|raw context|source chunk|document id)\b/i.test(
+      value,
+    );
+  }
+
+  private hasActionableStudyTask(value: string): boolean {
+    const normalizedValue = this.normalizeText(value);
+
+    if (!normalizedValue || this.isGenericStudyTask(normalizedValue)) {
+      return false;
+    }
+
+    const wordCount = normalizedValue.split(/\s+/).filter(Boolean).length;
+
+    return wordCount >= 5 && /[\p{L}\p{N}]/u.test(normalizedValue);
+  }
+
+  private normalizePlanText(
+    value: string | null | undefined,
+    language: SummaryLanguage = 'en',
+  ): string {
     const normalizedValue = this.normalizeText(value);
 
     if (!normalizedValue) {
       return '';
     }
+
+    const docWord = language === 'vi' ? 'tài liệu' : 'the document';
 
     const learnerFacingValue = normalizedValue
       .replace(/\b(document|doc)\s*id\s*:?\s*[\w-]+/gi, '')
@@ -880,30 +834,32 @@ export class RagStudyGpsService {
       )
       .replace(
         /\b(?:tài\s+liệu\s+của|file|document)\s+['"][^'"]+\.(?:pdf|docx?|pptx?|txt)['"]/gi,
-        'tài liệu',
+        docWord,
       )
       .replace(
         /\s+(?:in|from|inside|within|trong|theo)\s+['"]?\bStudy\s+parts?\s*\d+\b['"]?/gi,
         '',
       )
-      .replace(/['"]?\bStudy\s+parts?\s*\d+\b['"]?/gi, 'tài liệu')
-      .replace(/\bStudy\s+parts?\b/gi, 'tài liệu')
-      .replace(/\bselected\s+sections?\b/gi, 'tài liệu')
-      .replace(/\b(?:excerpt|reference)\s*#?\d+\b/gi, 'tài liệu')
-      .replace(/\bsource\s+chunks?\s*#?\d*\b/gi, 'tài liệu')
-      .replace(/\bchunks?\s*#?\d+\b/gi, 'tài liệu')
-      .replace(/\brelevant\s+parts?\b/gi, 'tài liệu')
-      .replace(/\bchunks?\b/gi, 'tài liệu')
+      .replace(/['"]?\bStudy\s+parts?\s*\d+\b['"]?/gi, docWord)
+      .replace(/\bStudy\s+parts?\b/gi, docWord)
+      .replace(/\bselected\s+sections?\b/gi, docWord)
+      .replace(/\b(?:excerpt|reference)\s*#?\d+\b/gi, docWord)
+      .replace(/\bsource\s+chunks?\s*#?\d*\b/gi, docWord)
+      .replace(/\bchunks?\s*#?\d+\b/gi, docWord)
+      .replace(/\brelevant\s+parts?\b/gi, docWord)
+      .replace(/\bchunks?\b/gi, docWord)
       .replace(/\bembeddings?\b/gi, '')
       .replace(/\bvectors?\b/gi, '')
-      .replace(/\braw\s+context\b/gi, 'tài liệu')
+      .replace(/\braw\s+context\b/gi, docWord)
       .replace(/\bretrieval\b/gi, 'reading')
-      .replace(/\btài liệu\s+và\s+tài liệu\b/gi, 'tài liệu')
-      .replace(/\btài liệu\s*,\s*tài liệu\b/gi, 'tài liệu')
-      .replace(/^Đọc\s+(?:kỹ\s+)?tài liệu\s+và\s+/i, '')
-      .replace(/^Đọc\s+tài liệu\s+để\s+/i, '')
-      .replace(/^Nghiên cứu\s+tài liệu\s+(?:để\s+)?/i, '')
-      .replace(/^Phân tích\s+tài liệu\s+về\s+/i, 'Phân tích ')
+      // Dedup consecutive docWord occurrences
+      .replace(new RegExp(`${docWord}\\s+và\\s+${docWord}`, 'gi'), docWord)
+      .replace(new RegExp(`${docWord}\\s*,\\s*${docWord}`, 'gi'), docWord)
+      // Vietnamese-specific start-of-sentence cleanup
+      .replace(/^Đọc\s+(?:kỹ\s+)?tài\s+liệu\s+và\s+/i, '')
+      .replace(/^Đọc\s+tài\s+liệu\s+để\s+/i, '')
+      .replace(/^Nghiên cứu\s+tài\s+liệu\s+(?:để\s+)?/i, '')
+      .replace(/^Phân tích\s+tài\s+liệu\s+về\s+/i, 'Phân tích ')
       .replace(/^và\s+/i, '')
       .replace(/^and\s+/i, '');
 
@@ -923,30 +879,5 @@ export class RagStudyGpsService {
       .replace(/\s+\)/g, ')')
       .replace(/\s+/g, ' ')
       .trim();
-  }
-
-  private truncateText(value: string, maxLength: number): string {
-    const normalizedValue = this.normalizeText(value);
-
-    if (normalizedValue.length <= maxLength) {
-      return normalizedValue;
-    }
-
-    const roughSlice = normalizedValue.slice(0, maxLength).trimEnd();
-    const lastWordBoundary = roughSlice.lastIndexOf(' ');
-    const safeSlice =
-      lastWordBoundary > Math.floor(maxLength / 2)
-        ? roughSlice.slice(0, lastWordBoundary)
-        : roughSlice;
-
-    return `${safeSlice}...`;
-  }
-
-  private toErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-
-    return String(error);
   }
 }

@@ -1,8 +1,8 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useNavigate, useParams } from "react-router-dom";
-import { useDocViewer } from "../context/DocViewerContext.jsx";
+import { useDocumentViewerSession } from "../context/DocViewerContext.jsx";
 import { getFilePresentation } from "../components/workspace/DocumentLibraryPanel.jsx";
 import {
   downloadDocumentFile,
@@ -20,11 +20,9 @@ import {
   askDocument,
   clearDocumentAskHistory,
   getDocumentAskHistory,
-  getDocumentMindMap,
   getDocumentSummary,
 } from "../service/ragAPI.js";
 
-const MindMapCanvas = lazy(() => import("../components/documents/MindMapCanvas.jsx"));
 
 const askMarkdownComponents = {
   p: ({ children }) => (
@@ -289,26 +287,6 @@ const ExpandIcon = () => (
   </svg>
 );
 
-const MindMapIcon = ({ className = "h-5 w-5" }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 20 20"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    className={className}
-  >
-    <circle cx="5" cy="5" r="2" />
-    <circle cx="5" cy="15" r="2" />
-    <circle cx="15" cy="10" r="2.5" />
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M6.8 6.2 12.6 8.9M6.8 13.8 12.6 11.1"
-    />
-  </svg>
-);
-
 const ChatBubbleIcon = ({ className = "h-5 w-5" }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -423,7 +401,6 @@ const SummaryCardIcon = ({ className = "h-4 w-4" }) => (
 
 const AI_TABS = [
   { id: "summary", label: "Summary", Icon: SparklesIcon },
-  { id: "mindmap", label: "Mind Map", Icon: MindMapIcon },
   { id: "ask", label: "Ask AI", Icon: ChatBubbleIcon },
   { id: "note", label: "SKS Note", Icon: NoteIcon },
   { id: "related", label: "Related", Icon: ExternalLinkIcon },
@@ -458,50 +435,6 @@ const resolveSummaryVersion = (summaryData, preferredSlot) => {
   }
 
   return versions[0] || summaryData || null;
-};
-
-const getMindMapVersions = (mindMapData) =>
-  Array.isArray(mindMapData?.versions) ? mindMapData.versions : [];
-
-const normalizeMindMapVersionForView = (version) => {
-  if (!version) return null;
-
-  return {
-    ...version,
-    mindMap: version.mindMap || version.root || null,
-    language: version.language || version.summaryLanguage,
-    generatedAt: version.generatedAt || "",
-  };
-};
-
-const resolveMindMapVersion = (mindMapData, preferredSlot) => {
-  const versions = getMindMapVersions(mindMapData).map(
-    normalizeMindMapVersionForView,
-  );
-
-  if (preferredSlot) {
-    const preferredVersion = versions.find((item) => item?.slot === preferredSlot);
-
-    if (preferredVersion) {
-      return preferredVersion;
-    }
-  }
-
-  const selectedVersion = versions.find((item) => item?.slot === mindMapData?.slot);
-
-  if (selectedVersion) {
-    return selectedVersion;
-  }
-
-  const activeVersion = versions.find(
-    (item) => item?.slot === mindMapData?.activeSlot,
-  );
-
-  if (activeVersion) {
-    return activeVersion;
-  }
-
-  return normalizeMindMapVersionForView(mindMapData);
 };
 
 const getNarrativeSummaryBody = (summaryVersion) => {
@@ -601,175 +534,6 @@ const normalizeDocumentNotePayload = (note = {}) => {
   };
 };
 
-const findMindMapNodeById = (node, targetId) => {
-  if (!node || !targetId) {
-    return null;
-  }
-
-  if (node.id === targetId) {
-    return node;
-  }
-
-  for (const child of node.children || []) {
-    const match = findMindMapNodeById(child, targetId);
-
-    if (match) {
-      return match;
-    }
-  }
-
-  return null;
-};
-
-const findMindMapNodePathById = (node, targetId, path = []) => {
-  if (!node || !targetId) {
-    return [];
-  }
-
-  const nextPath = [...path, node];
-
-  if (node.id === targetId) {
-    return nextPath;
-  }
-
-  for (const child of node.children || []) {
-    const match = findMindMapNodePathById(child, targetId, nextPath);
-
-    if (match.length > 0) {
-      return match;
-    }
-  }
-
-  return [];
-};
-
-const escapeRegExp = (value) =>
-  String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-const stripMindMapSummaryLeadIn = (summary, label) => {
-  let text = String(summary || "").replace(/\s+/g, " ").trim();
-  const cleanLabel = String(label || "").replace(/\s+/g, " ").trim();
-
-  if (!text) {
-    return "";
-  }
-
-  const labelPattern = cleanLabel ? escapeRegExp(cleanLabel) : ".+?";
-  const leadInPatterns = [
-    new RegExp(
-      `^Nội dung này tập trung vào\\s+${labelPattern}\\s*:?\\s*`,
-      "i",
-    ),
-    new RegExp(
-      `^Nút này giải thích\\s+${labelPattern}\\.?\\s*Trong tài liệu, ý này được đặt trong mạch:\\s*`,
-      "i",
-    ),
-    new RegExp(
-      `^Ý này nhấn mạnh\\s+${labelPattern}\\.?\\s*Trong tài liệu, nội dung này được đặt trong bối cảnh:\\s*`,
-      "i",
-    ),
-    new RegExp(
-      `^This node focuses on\\s+${labelPattern}\\s*:?\\s*`,
-      "i",
-    ),
-    new RegExp(
-      `^This node explains\\s+${labelPattern}\\.?\\s*In the document, it appears in this context:\\s*`,
-      "i",
-    ),
-    new RegExp(
-      `^This node highlights\\s+${labelPattern}\\.?\\s*In the document, it appears in this context:\\s*`,
-      "i",
-    ),
-  ];
-
-  for (const pattern of leadInPatterns) {
-    text = text.replace(pattern, "").trim();
-  }
-
-  return text;
-};
-
-const lowercaseFirstLetter = (value) => {
-  const text = String(value || "").trim();
-
-  if (!text) {
-    return "";
-  }
-
-  return `${text.charAt(0).toLocaleLowerCase("vi-VN")}${text.slice(1)}`;
-};
-
-const ensureSentence = (value) => {
-  const text = String(value || "").trim();
-
-  if (!text) {
-    return "";
-  }
-
-  return /[.!?。]$/.test(text) ? text : `${text}.`;
-};
-
-const isMindMapNodeVisible = (
-  node,
-  targetId,
-  expandedNodeIds = new Set(),
-  showAllNodes = false,
-  rootId = node?.id,
-) => {
-  if (!node || !targetId) {
-    return false;
-  }
-
-  if (node.id === targetId) {
-    return true;
-  }
-
-  const shouldVisitChildren =
-    showAllNodes || node.id === rootId || expandedNodeIds.has(node.id);
-
-  if (!shouldVisitChildren) {
-    return false;
-  }
-
-  return (node.children || []).some((child) =>
-    isMindMapNodeVisible(
-      child,
-      targetId,
-      expandedNodeIds,
-      showAllNodes,
-      rootId,
-    ),
-  );
-};
-
-const collectMindMapExpandedIds = (node, maxExpandableDepth = 1) => {
-  if (!node) {
-    return [];
-  }
-
-  const expandedIds = new Set();
-
-  const visit = (currentNode, depth) => {
-    if (!currentNode || depth > maxExpandableDepth) {
-      return;
-    }
-
-    if (depth === 0 || (currentNode.children || []).length > 0) {
-      expandedIds.add(currentNode.id);
-    }
-
-    if (depth === maxExpandableDepth) {
-      return;
-    }
-
-    (currentNode.children || []).forEach((child) => visit(child, depth + 1));
-  };
-
-  visit(node, 0);
-
-  return Array.from(expandedIds);
-};
-
 const CloseIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -835,83 +599,61 @@ const RelatedCard = ({ document, onOpen }) => {
 const DocumentViewer = () => {
   const navigate = useNavigate();
   const { documentId } = useParams();
-  const { clearDocViewer } = useDocViewer();
+  const {
+    activeTab,
+    setActiveTab,
+    sidebarOpen,
+    setSidebarOpen,
+    sidebarWidth,
+    setSidebarWidth,
+    summaryState,
+    setSummaryState,
+    selectedLanguage,
+    setSelectedLanguage,
+    isSummaryModalOpen,
+    setIsSummaryModalOpen,
+    isSummaryHistoryOpen,
+    setIsSummaryHistoryOpen,
+    isSummaryRefreshConfirmOpen,
+    setIsSummaryRefreshConfirmOpen,
+    summaryInstructionDraft,
+    setSummaryInstructionDraft,
+    summaryInstructionError,
+    setSummaryInstructionError,
+    selectedSummarySlot,
+    setSelectedSummarySlot,
+    askQuestion,
+    setAskQuestion,
+    askHistoryState,
+    setAskHistoryState,
+    askState,
+    setAskState,
+    noteState,
+    setNoteState,
+    isNoteHistoryOpen,
+    setIsNoteHistoryOpen,
+    isNoteTitleModalOpen,
+    setIsNoteTitleModalOpen,
+    noteTitleDraft,
+    setNoteTitleDraft,
+    aiPanelScrollTopByTab,
+    setAiPanelScrollTopByTab,
+  } = useDocumentViewerSession(documentId);
 
   /* Core state */
   const [documentData, setDocumentData] = useState(null);
   const [relatedDocuments, setRelatedDocuments] = useState([]);
   const [fileUrl, setFileUrl] = useState("");
   const [contentType, setContentType] = useState("");
+  const [docxHtml, setDocxHtml] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  /* AI Rail state */
-  const [activeTab, setActiveTab] = useState("summary");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [sidebarWidth, setSidebarWidth] = useState(580);
-
-  const [summaryState, setSummaryState] = useState({
-    loading: false,
-    error: "",
-    data: null,
-  });
-  const [selectedLanguage, setSelectedLanguage] = useState("en");
-  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
-  const [isSummaryHistoryOpen, setIsSummaryHistoryOpen] = useState(false);
-  const [isSummaryRefreshConfirmOpen, setIsSummaryRefreshConfirmOpen] =
-    useState(false);
-  const [summaryInstructionDraft, setSummaryInstructionDraft] = useState("");
-  const [summaryInstructionError, setSummaryInstructionError] = useState("");
-  const [selectedSummarySlot, setSelectedSummarySlot] = useState(null);
-  const [isMindMapModalOpen, setIsMindMapModalOpen] = useState(false);
-  const [isMindMapHistoryOpen, setIsMindMapHistoryOpen] = useState(false);
-  const [isMindMapRefreshConfirmOpen, setIsMindMapRefreshConfirmOpen] =
-    useState(false);
-  const [mindMapInstructionDraft, setMindMapInstructionDraft] = useState("");
-  const [mindMapInstructionError, setMindMapInstructionError] = useState("");
-  const [selectedMindMapSlot, setSelectedMindMapSlot] = useState(null);
-  const [mindMapState, setMindMapState] = useState({
-    loading: false,
-    error: "",
-    data: null,
-  });
-  const [selectedMindMapNodeId, setSelectedMindMapNodeId] = useState(null);
-  const [mindMapViewMode, setMindMapViewMode] = useState("explore");
-  const [expandedMindMapNodeIds, setExpandedMindMapNodeIds] = useState([]);
-  const [askQuestion, setAskQuestion] = useState("");
-  const [askHistoryState, setAskHistoryState] = useState({
-    loading: false,
-    error: "",
-    items: [],
-    loaded: false,
-    clearing: false,
-  });
-  const [askState, setAskState] = useState({
-    loading: false,
-    error: "",
-    pendingQuestion: "",
-  });
-  const [noteState, setNoteState] = useState({
-    loading: false,
-    saving: false,
-    error: "",
-    notes: [],
-    activeNoteId: null,
-    title: "Study Note",
-    savedTitle: "Study Note",
-    content: "",
-    savedContent: "",
-    updatedAt: null,
-    loaded: false,
-  });
-  const [isNoteHistoryOpen, setIsNoteHistoryOpen] = useState(false);
-  const [isNoteTitleModalOpen, setIsNoteTitleModalOpen] = useState(false);
-  const [noteTitleDraft, setNoteTitleDraft] = useState("");
 
   const chatInputRef = useRef(null);
   const askThreadRef = useRef(null);
   const isResizing = useRef(false);
   const containerRef = useRef(null);
+  const aiPanelRef = useRef(null);
 
   /* Resize Handler */
   const handleMouseDown = useCallback((e) => {
@@ -939,7 +681,7 @@ const DocumentViewer = () => {
 
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
-  }, []);
+  }, [setSidebarWidth]);
 
   /* Data Persistence */
   useEffect(() => {
@@ -963,6 +705,18 @@ const DocumentViewer = () => {
 
         if (fileResult.status === "fulfilled") {
           objectUrl = URL.createObjectURL(fileResult.value.blob);
+          const ext = (docResult.document?.fileRef || "").split(".").pop()?.toLowerCase() ?? "";
+          const ct = (fileResult.value.contentType || fileResult.value.blob.type || "").toLowerCase();
+          if (ext === "docx" || ct.includes("wordprocessingml")) {
+            try {
+              const mammoth = await import("mammoth");
+              const arrayBuffer = await fileResult.value.blob.arrayBuffer();
+              const { value: html } = await mammoth.convertToHtml({ arrayBuffer });
+              if (isActive) setDocxHtml(html);
+            } catch {
+              // fall through to "Preview Not Available"
+            }
+          }
         }
         if (!isActive) {
           URL.revokeObjectURL(objectUrl);
@@ -1005,60 +759,15 @@ const DocumentViewer = () => {
     return () => {
       isActive = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setDocxHtml(null);
     };
-  }, [documentId]);
-
-  /* Tabs Cleanup */
-  useEffect(() => {
-    setActiveTab("summary");
-    setSummaryState({ loading: false, error: "", data: null });
-    setIsSummaryModalOpen(false);
-    setIsSummaryHistoryOpen(false);
-    setIsSummaryRefreshConfirmOpen(false);
-    setSummaryInstructionDraft("");
-    setSummaryInstructionError("");
-    setSelectedSummarySlot(null);
-    setIsMindMapModalOpen(false);
-    setIsMindMapHistoryOpen(false);
-    setIsMindMapRefreshConfirmOpen(false);
-    setMindMapInstructionDraft("");
-    setMindMapInstructionError("");
-    setSelectedMindMapSlot(null);
-    setMindMapState({ loading: false, error: "", data: null });
-    setSelectedMindMapNodeId(null);
-    setMindMapViewMode("explore");
-    setExpandedMindMapNodeIds([]);
-    setAskQuestion("");
-    setAskHistoryState({
-      loading: false,
-      error: "",
-      items: [],
-      loaded: false,
-      clearing: false,
-    });
-    setAskState({ loading: false, error: "", pendingQuestion: "" });
-    setNoteState({
-      loading: false,
-      saving: false,
-      error: "",
-      notes: [],
-      activeNoteId: null,
-      title: "Study Note",
-      savedTitle: "Study Note",
-      content: "",
-      savedContent: "",
-      updatedAt: null,
-      loaded: false,
-    });
-    setIsNoteHistoryOpen(false);
-    setIsNoteTitleModalOpen(false);
-    setNoteTitleDraft("");
   }, [documentId]);
 
   /* AI Logic */
   const loadSummary = useCallback(
     async (language = selectedLanguage, options = {}) => {
       if (!documentId || summaryState.loading) return false;
+      const currentDocumentId = documentId;
       try {
         const targetLanguage = language || selectedLanguage;
         const forceRefresh = Boolean(options.forceRefresh);
@@ -1067,11 +776,12 @@ const DocumentViewer = () => {
           typeof options.instruction === "string" ? options.instruction : undefined;
         setSelectedLanguage(targetLanguage);
         setSummaryState((s) => ({ ...s, loading: true, error: "" }));
-        const result = await getDocumentSummary(documentId, targetLanguage, {
+        const result = await getDocumentSummary(currentDocumentId, targetLanguage, {
           forceRefresh,
           slot: targetSlot,
           instruction,
         });
+        if (currentDocumentId !== documentId) return false;
         setSummaryState({
           loading: false,
           error: "",
@@ -1086,6 +796,7 @@ const DocumentViewer = () => {
         }
         return true;
       } catch (err) {
+        if (currentDocumentId !== documentId) return false;
         const errorMessage =
           err.response?.data?.message || "AI could not summarize this.";
         setSummaryState((current) => ({
@@ -1101,7 +812,16 @@ const DocumentViewer = () => {
         return false;
       }
     },
-    [documentId, selectedLanguage, summaryState.loading],
+    [
+      documentId,
+      selectedLanguage,
+      setSelectedLanguage,
+      setSelectedSummarySlot,
+      setSummaryInstructionDraft,
+      setSummaryInstructionError,
+      setSummaryState,
+      summaryState.loading,
+    ],
   );
 
   const summaryVersions = useMemo(
@@ -1119,93 +839,6 @@ const DocumentViewer = () => {
   const summaryHistoryVersions = useMemo(
     () => summaryVersions.filter((item) => item.slot === "custom"),
     [summaryVersions],
-  );
-
-  const loadMindMap = useCallback(
-    async (language = selectedLanguage, options = {}) => {
-      if (!documentId || mindMapState.loading) return false;
-      try {
-        const targetLanguage = language || selectedLanguage;
-        const forceRefresh = Boolean(options.forceRefresh);
-        const targetSlot = options.slot || undefined;
-        const instruction =
-          typeof options.instruction === "string" ? options.instruction : undefined;
-        setSelectedLanguage(targetLanguage);
-        setMindMapState((s) => ({ ...s, loading: true, error: "" }));
-        const result = await getDocumentMindMap(documentId, targetLanguage, {
-          forceRefresh,
-          slot: targetSlot,
-          instruction,
-        });
-        setMindMapState({
-          loading: false,
-          error: "",
-          data: result,
-        });
-        setSelectedMindMapSlot(
-          result.slot || result.activeSlot || targetSlot || null,
-        );
-        setMindMapInstructionError("");
-        if (forceRefresh) {
-          setMindMapInstructionDraft("");
-        }
-        const rootId = result.mindMap?.id || "root";
-        const defaultExpandedIds = collectMindMapExpandedIds(
-          result.mindMap,
-          1,
-        );
-        setSelectedMindMapNodeId(rootId);
-        setMindMapViewMode("explore");
-        setExpandedMindMapNodeIds(
-          defaultExpandedIds.length > 0
-            ? defaultExpandedIds
-            : rootId
-              ? [rootId]
-              : [],
-        );
-        return true;
-      } catch (err) {
-        const errorMessage =
-          err.response?.data?.message || "AI could not build this mind map.";
-        setMindMapState((current) => ({
-          loading: false,
-          error: current.data && options.forceRefresh ? "" : errorMessage,
-          data: current.data,
-        }));
-        if (options.forceRefresh) {
-          setMindMapInstructionError(errorMessage);
-        } else {
-          setSelectedMindMapNodeId(null);
-          setExpandedMindMapNodeIds([]);
-        }
-        return false;
-      }
-    },
-    [documentId, mindMapState.loading, selectedLanguage],
-  );
-
-  const mindMapVersions = useMemo(
-    () => getMindMapVersions(mindMapState.data),
-    [mindMapState.data],
-  );
-  const activeMindMapVersion = useMemo(
-    () => resolveMindMapVersion(mindMapState.data, selectedMindMapSlot),
-    [selectedMindMapSlot, mindMapState.data],
-  );
-  const activeMindMapRoot = activeMindMapVersion?.mindMap || null;
-  const defaultMindMapVersion = useMemo(
-    () =>
-      mindMapVersions
-        .map(normalizeMindMapVersionForView)
-        .find((item) => item?.slot === "default") || null,
-    [mindMapVersions],
-  );
-  const mindMapHistoryVersions = useMemo(
-    () =>
-      mindMapVersions
-        .map(normalizeMindMapVersionForView)
-        .filter((item) => item?.slot === "custom"),
-    [mindMapVersions],
   );
 
   const loadAskHistory = useCallback(async () => {
@@ -1234,7 +867,7 @@ const DocumentViewer = () => {
         loaded: true,
       }));
     }
-  }, [documentId, askHistoryState.loading]);
+  }, [documentId, askHistoryState.loading, setAskHistoryState]);
 
   const loadDocumentNote = useCallback(async () => {
     if (!documentId || noteState.loading || noteState.loaded) return;
@@ -1263,7 +896,7 @@ const DocumentViewer = () => {
         loaded: true,
       }));
     }
-  }, [documentId, noteState.loaded, noteState.loading]);
+  }, [documentId, noteState.loaded, noteState.loading, setNoteState]);
 
   const handleSaveNote = useCallback(async () => {
     if (!documentId || noteState.saving) return;
@@ -1316,6 +949,9 @@ const DocumentViewer = () => {
     noteState.saving,
     noteState.savedTitle,
     noteState.title,
+    setIsNoteTitleModalOpen,
+    setNoteState,
+    setNoteTitleDraft,
   ]);
 
   const commitSaveNoteWithTitle = useCallback(
@@ -1367,6 +1003,9 @@ const DocumentViewer = () => {
       noteState.activeNoteId,
       noteState.content,
       noteState.saving,
+      setIsNoteTitleModalOpen,
+      setNoteState,
+      setNoteTitleDraft,
     ],
   );
 
@@ -1402,12 +1041,11 @@ const DocumentViewer = () => {
         error: "",
       };
     });
-  }, []);
+  }, [setNoteState]);
 
   const handleCreateNote = useCallback(() => {
     setNoteState((current) => {
       const now = new Date().toISOString();
-      const nextIndex = current.notes.length + 1;
       const nextNote = {
         id: createClientNoteId(),
         title: "Untitled note",
@@ -1428,7 +1066,7 @@ const DocumentViewer = () => {
         error: "",
       };
     });
-  }, []);
+  }, [setNoteState]);
 
   const handleRenameNote = useCallback(
     async (noteId, title) => {
@@ -1472,6 +1110,7 @@ const DocumentViewer = () => {
       noteState.content,
       noteState.notes,
       noteState.saving,
+      setNoteState,
     ],
   );
 
@@ -1503,7 +1142,7 @@ const DocumentViewer = () => {
         }));
       }
     },
-    [documentId, noteState.saving],
+    [documentId, noteState.saving, setNoteState],
   );
 
   const handleClearAskHistory = useCallback(async () => {
@@ -1532,7 +1171,12 @@ const DocumentViewer = () => {
           err.response?.data?.message || "Could not clear question history.",
       }));
     }
-  }, [documentId, askHistoryState.clearing]);
+  }, [
+    documentId,
+    askHistoryState.clearing,
+    setAskHistoryState,
+    setAskState,
+  ]);
 
   /* Actions */
   const handleToggleFavorite = async (id) => {
@@ -1562,11 +1206,6 @@ const DocumentViewer = () => {
       console.error("Download fail:", err);
     }
   };
-
-  /* Actions */
-  useEffect(() => {
-    return () => clearDocViewer();
-  }, [clearDocViewer]);
 
   useEffect(() => {
     if (
@@ -1606,6 +1245,37 @@ const DocumentViewer = () => {
     askThreadRef.current.scrollTop = askThreadRef.current.scrollHeight;
   }, [askHistoryState.items.length, askState.loading]);
 
+  const handleAiPanelScroll = useCallback(
+    (event) => {
+      const scrollTop = event.currentTarget.scrollTop;
+
+      setAiPanelScrollTopByTab((current) => {
+        if ((current[activeTab] ?? 0) === scrollTop) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [activeTab]: scrollTop,
+        };
+      });
+    },
+    [activeTab, setAiPanelScrollTopByTab],
+  );
+
+  useEffect(() => {
+    const panel = aiPanelRef.current;
+
+    if (!panel) {
+      return;
+    }
+
+    const scrollTop = aiPanelScrollTopByTab[activeTab] ?? 0;
+    window.requestAnimationFrame(() => {
+      panel.scrollTop = scrollTop;
+    });
+  }, [activeTab, aiPanelScrollTopByTab]);
+
   const handleAsk = async () => {
     const trimmedQuestion = askQuestion.trim();
 
@@ -1642,134 +1312,6 @@ const DocumentViewer = () => {
     }
   };
 
-  const selectedMindMapNode = useMemo(
-    () =>
-      findMindMapNodeById(activeMindMapRoot, selectedMindMapNodeId),
-    [activeMindMapRoot, selectedMindMapNodeId],
-  );
-
-  const selectedMindMapNodePath = useMemo(
-    () => findMindMapNodePathById(activeMindMapRoot, selectedMindMapNodeId),
-    [activeMindMapRoot, selectedMindMapNodeId],
-  );
-
-  const selectedMindMapParentNode =
-    selectedMindMapNodePath.length > 1
-      ? selectedMindMapNodePath[selectedMindMapNodePath.length - 2]
-      : null;
-  const selectedMindMapSiblingNodes = useMemo(
-    () =>
-      selectedMindMapParentNode?.children?.filter(
-        (node) => node.id !== selectedMindMapNode?.id,
-      ) || [],
-    [selectedMindMapParentNode, selectedMindMapNode?.id],
-  );
-
-  const rootMindMapId = activeMindMapRoot?.id || null;
-
-  const expandedMindMapNodeIdSet = useMemo(
-    () => new Set(expandedMindMapNodeIds),
-    [expandedMindMapNodeIds],
-  );
-
-  const handleMindMapNodeSelect = useCallback((nodeId) => {
-    setSelectedMindMapNodeId(nodeId);
-  }, []);
-
-  const handleMindMapNoteClose = useCallback(() => {
-    setSelectedMindMapNodeId(null);
-  }, []);
-
-  const handleMindMapNodeToggle = useCallback(
-    (nodeId) => {
-      if (mindMapViewMode === "all") {
-        return;
-      }
-
-      const targetNode = findMindMapNodeById(
-        activeMindMapRoot,
-        nodeId,
-      );
-
-      if (!targetNode?.children?.length) {
-        return;
-      }
-
-      const isCollapsing = expandedMindMapNodeIds.includes(nodeId);
-
-      if (
-        isCollapsing &&
-        selectedMindMapNodeId &&
-        selectedMindMapNodeId !== nodeId &&
-        findMindMapNodeById(targetNode, selectedMindMapNodeId)
-      ) {
-        setSelectedMindMapNodeId(nodeId);
-      }
-
-      setExpandedMindMapNodeIds((currentIds) =>
-        currentIds.includes(nodeId)
-          ? currentIds.filter((currentId) => currentId !== nodeId)
-          : [...currentIds, nodeId],
-      );
-    },
-    [
-      activeMindMapRoot,
-      expandedMindMapNodeIds,
-      mindMapViewMode,
-      selectedMindMapNodeId,
-    ],
-  );
-
-  const handleMindMapViewModeChange = useCallback(
-    (mode) => {
-      setMindMapViewMode(mode);
-
-      if (mode === "explore") {
-        const nextExpandedIds =
-          expandedMindMapNodeIds.length > 0
-            ? expandedMindMapNodeIds
-            : collectMindMapExpandedIds(activeMindMapRoot, 1);
-
-        if (expandedMindMapNodeIds.length === 0 && rootMindMapId) {
-          setExpandedMindMapNodeIds(
-            nextExpandedIds.length > 0 ? nextExpandedIds : [rootMindMapId],
-          );
-        }
-
-        if (
-          selectedMindMapNodeId &&
-          !isMindMapNodeVisible(
-            activeMindMapRoot,
-            selectedMindMapNodeId,
-            new Set(nextExpandedIds),
-            false,
-            rootMindMapId,
-          )
-        ) {
-          setSelectedMindMapNodeId(rootMindMapId);
-        }
-      }
-    },
-    [
-      activeMindMapRoot,
-      expandedMindMapNodeIds,
-      rootMindMapId,
-      selectedMindMapNodeId,
-    ],
-  );
-
-  const handleMindMapLanguageChange = useCallback(
-    (language) => {
-      if (activeMindMapRoot) {
-        void loadMindMap(language);
-        return;
-      }
-
-      setSelectedLanguage(language);
-    },
-    [activeMindMapRoot, loadMindMap],
-  );
-
   const handleSummarySlotChange = useCallback(
     (slot) => {
       if (!summaryVersions.some((item) => item.slot === slot)) {
@@ -1778,32 +1320,7 @@ const DocumentViewer = () => {
 
       setSelectedSummarySlot(slot);
     },
-    [summaryVersions],
-  );
-
-  const handleMindMapSlotChange = useCallback(
-    (slot) => {
-      if (!mindMapVersions.some((item) => item.slot === slot)) {
-        return;
-      }
-
-      setSelectedMindMapSlot(slot);
-      const nextVersion = resolveMindMapVersion(mindMapState.data, slot);
-      const nextRoot = nextVersion?.mindMap || null;
-      const rootId = nextRoot?.id || "root";
-      const defaultExpandedIds = collectMindMapExpandedIds(nextRoot, 1);
-
-      setSelectedMindMapNodeId(rootId);
-      setMindMapViewMode("explore");
-      setExpandedMindMapNodeIds(
-        defaultExpandedIds.length > 0
-          ? defaultExpandedIds
-          : rootId
-            ? [rootId]
-            : [],
-      );
-    },
-    [mindMapState.data, mindMapVersions],
+    [setSelectedSummarySlot, summaryVersions],
   );
 
   /* Tab Components */
@@ -2037,550 +1554,6 @@ const DocumentViewer = () => {
                 </div>
               </div>
             </>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const renderMindMapNodeDetail = (mode = "canvas") => {
-    if (!selectedMindMapNode) {
-      return null;
-    }
-
-    const detailLanguage =
-      activeMindMapVersion?.language || mindMapState.data?.language || selectedLanguage;
-    const isVietnamese = detailLanguage === "vi";
-    const childCount = selectedMindMapNode.children?.length || 0;
-    const summaryText =
-      selectedMindMapNode.summary ||
-      (childCount > 0
-        ? isVietnamese
-          ? "Phần này gom các ý liên quan để bạn tiếp tục theo dõi trong tài liệu."
-          : "This branch groups the next ideas in the document."
-        : "");
-
-    const isFloating = mode === "floating";
-    const isCanvasOverlay = mode === "canvas";
-    const isCompact = mode === "compact";
-    const containerClass = isFloating
-      ? "pointer-events-auto flex h-full w-[400px] max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-[32px] border border-white/60 bg-white/75 shadow-[0_0_80px_-20px_rgba(34,211,238,0.15),0_30px_60px_-30px_rgba(15,23,42,0.3)] backdrop-blur-3xl ring-1 ring-slate-900/5 transition-all duration-300 animate-in slide-in-from-right-8 fade-in"
-      : isCanvasOverlay
-        ? "pointer-events-auto flex max-h-[min(62vh,540px)] w-full max-w-[440px] flex-col overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_28px_80px_-40px_rgba(15,23,42,0.34)] backdrop-blur-3xl ring-1 ring-slate-900/5 transition-all duration-300 animate-in slide-in-from-bottom-6 fade-in"
-        : "pointer-events-auto flex max-h-[320px] w-[320px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[22px] border border-slate-200/80 bg-white/96 shadow-[0_24px_60px_-36px_rgba(15,23,42,0.34)] backdrop-blur-xl";
-    const childPreviewLimit = isCompact ? 3 : 6;
-    const childPreviewNodes =
-      selectedMindMapNode.children?.slice(0, childPreviewLimit) || [];
-    const childStudyNotes = childPreviewNodes
-      .map((childNode) => ({
-        id: childNode.id,
-        label: childNode.label || "",
-        summary:
-          childNode.summary && childNode.summary !== childNode.label
-            ? childNode.summary
-            : "",
-      }))
-      .filter((childNode) => childNode.label || childNode.summary);
-    const detailedNodeNote = selectedMindMapNode.studyNote || null;
-    const isLoadingDetailedNodeNote = false;
-    const detailedNodeNoteKeyPoints = Array.isArray(detailedNodeNote?.keyPoints)
-      ? detailedNodeNote.keyPoints.filter(Boolean)
-      : [];
-    const cleanedSummaryText =
-      stripMindMapSummaryLeadIn(
-        detailedNodeNote?.overview || summaryText,
-        selectedMindMapNode.label,
-      ) ||
-      detailedNodeNote?.overview ||
-      summaryText;
-    const meaningSourceText = cleanedSummaryText || summaryText;
-    const meaningStartsWithLabel =
-      selectedMindMapNode.label &&
-      new RegExp(`^${escapeRegExp(selectedMindMapNode.label)}\\b`, "i").test(
-        meaningSourceText,
-      );
-    const meaningDetailText = meaningSourceText
-      ? meaningStartsWithLabel
-        ? ensureSentence(meaningSourceText)
-        : isVietnamese
-        ? ensureSentence(
-            `${selectedMindMapNode.label} là ${lowercaseFirstLetter(
-              meaningSourceText.replace(/[.!?。]\s*$/, ""),
-            )}`,
-          )
-        : ensureSentence(
-            `${selectedMindMapNode.label} means ${lowercaseFirstLetter(
-              meaningSourceText.replace(/[.!?。]\s*$/, ""),
-            )}`,
-          )
-      : isVietnamese
-        ? `Mục này chưa có đủ dữ liệu giải thích riêng cho "${selectedMindMapNode.label}".`
-        : `This item does not yet have enough source detail for "${selectedMindMapNode.label}".`;
-    const pathLabels = selectedMindMapNodePath
-      .map((node) => node?.label)
-      .filter(Boolean);
-    const contextText =
-      selectedMindMapParentNode?.label && selectedMindMapParentNode.id !== selectedMindMapNode.id
-        ? isVietnamese
-          ? `Trong sơ đồ, ý này thuộc nhánh "${selectedMindMapParentNode.label}", nên nó đang làm rõ một phần của chủ đề đó.`
-          : `In this map, it sits under "${selectedMindMapParentNode.label}", so it explains one part of that parent idea.`
-        : pathLabels.length > 1
-          ? isVietnamese
-            ? `Mạch liên kết: ${pathLabels.join(" → ")}.`
-            : `Map path: ${pathLabels.join(" → ")}.`
-          : "";
-    const detailedExplanation = detailedNodeNote?.explanation
-      ? stripMindMapSummaryLeadIn(
-          detailedNodeNote.explanation,
-          selectedMindMapNode.label,
-        ) || detailedNodeNote.explanation
-      : "";
-    const siblingStudyNotes =
-      selectedMindMapSiblingNodes
-        .slice(0, 3)
-        .map((node) => ({
-          id: node.id,
-          label: node.label || "",
-          summary:
-            node.summary && node.summary !== node.label
-              ? stripMindMapSummaryLeadIn(node.summary, node.label)
-              : "",
-        }))
-        .filter((node) => node.label || node.summary);
-    const relatedStudyNotes =
-      detailedNodeNoteKeyPoints.length > 0
-        ? []
-        : childStudyNotes.length > 0
-          ? childStudyNotes
-          : siblingStudyNotes;
-    const relatedStudyTitle =
-      childStudyNotes.length > 0
-        ? isVietnamese
-          ? "Ý nhỏ bên trong"
-          : "Inside This Idea"
-        : isVietnamese
-          ? "Ý liên quan cùng nhánh"
-          : "Related Ideas";
-    const studyDetailParagraphs = [
-      detailedExplanation || meaningDetailText,
-      detailedNodeNote?.studyFocus || contextText,
-    ].filter(Boolean);
-    const displaySummaryText =
-      isCompact && meaningSourceText.length > 220
-        ? `${meaningSourceText.slice(0, 220).trimEnd()}...`
-        : meaningSourceText;
-    const hiddenBranchCount = Math.max(
-      childCount - childPreviewNodes.length,
-      0,
-    );
-    const branchCountLabel =
-      childCount > 0
-        ? isVietnamese
-          ? `${childCount} nhánh`
-          : `${childCount} ${childCount === 1 ? "branch" : "branches"}`
-        : null;
-    const branchHint =
-      childCount > 0
-        ? isVietnamese
-          ? "Chọn một nhánh bên dưới để xem tiếp."
-          : "Choose a branch below to continue."
-        : null;
-
-    return (
-      <div className={containerClass}>
-        <div
-          className={`flex items-start justify-between border-b border-slate-100 ${isCompact ? "gap-3 px-4 py-3" : "gap-4 px-6 py-5 bg-white/40"}`}
-        >
-          <div className="min-w-0">
-            <p
-              className={`font-black uppercase text-slate-400 ${isCompact ? "text-[8px] tracking-[0.2em]" : "text-[9px] tracking-[0.24em]"}`}
-            >
-              Study Note
-            </p>
-            <h4
-              className={`font-black leading-snug tracking-tight text-slate-950 ${isCompact ? "mt-1.5 text-[15px]" : "mt-2 text-[18px]"}`}
-            >
-              {selectedMindMapNode.label}
-            </h4>
-          </div>
-          <button
-            type="button"
-            onClick={handleMindMapNoteClose}
-            className={`flex shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-900 ${isCompact ? "h-8 w-8" : "h-9 w-9"}`}
-            title="Close note"
-          >
-            <CloseIcon />
-          </button>
-        </div>
-
-        <div
-          className={`flex-1 overflow-y-auto scrollbar-none ${isCompact ? "space-y-4 px-4 py-3" : "space-y-5 px-5 py-4"}`}
-        >
-          {displaySummaryText ? (
-            <section className={isCompact ? "space-y-1.5" : "space-y-2"}>
-              <p
-                className={`font-black uppercase tracking-[0.2em] text-slate-400 ${isCompact ? "text-[8px]" : "text-[9px]"}`}
-              >
-                Overview
-              </p>
-              <div
-                className={`border border-slate-200/80 bg-slate-50/85 ${isCompact ? "rounded-[16px] p-3" : "rounded-[20px] p-4"}`}
-              >
-                <p
-                  className={`text-slate-600 ${isCompact ? "text-[12px] leading-6" : "text-[13px] leading-7"}`}
-                >
-                  {displaySummaryText}
-                </p>
-              </div>
-            </section>
-          ) : null}
-
-          <section className={isCompact ? "space-y-1.5" : "space-y-2"}>
-            <p
-              className={`font-black uppercase tracking-[0.2em] text-slate-400 ${isCompact ? "text-[8px]" : "text-[9px]"}`}
-            >
-              Study Detail
-            </p>
-            <div
-              className={`border border-cyan-100/80 bg-cyan-50/65 ${isCompact ? "rounded-[16px] p-3" : "rounded-[20px] p-4"}`}
-            >
-              {isLoadingDetailedNodeNote ? (
-                <div className="space-y-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-500">
-                    {isVietnamese
-                      ? "Đang đọc lại tài liệu cho node này..."
-                      : "Reading the source for this node..."}
-                  </p>
-                  <div className="space-y-3 animate-pulse">
-                    <div className="h-4 w-11/12 rounded-full bg-cyan-100" />
-                    <div className="h-4 w-10/12 rounded-full bg-cyan-100" />
-                    <div className="h-4 w-8/12 rounded-full bg-cyan-100" />
-                  </div>
-                </div>
-              ) : (
-                <>
-              <p
-                className={`text-slate-700 ${isCompact ? "text-[12px] leading-6" : "text-[13px] leading-7"}`}
-              >
-                {studyDetailParagraphs[0]}
-              </p>
-              {studyDetailParagraphs.slice(1).map((paragraph, index) => (
-                <p
-                  key={index}
-                  className={`mt-3 text-slate-600 ${isCompact ? "text-[12px] leading-6" : "text-[13px] leading-7"}`}
-                >
-                  {paragraph}
-                </p>
-              ))}
-              {detailedNodeNoteKeyPoints.length > 0 && !isCompact ? (
-                <div className="mt-4 space-y-2.5">
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-cyan-500">
-                    {isVietnamese ? "Điểm cần hiểu" : "Key Points"}
-                  </p>
-                  <div className="space-y-2">
-                    {detailedNodeNoteKeyPoints.slice(0, 6).map((point, index) => (
-                      <div
-                        key={`${point}-${index}`}
-                        className="flex gap-3 rounded-2xl border border-white/80 bg-white/80 px-3.5 py-3"
-                      >
-                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-cyan-100 text-[10px] font-black text-cyan-700">
-                          {index + 1}
-                        </span>
-                        <p className="text-[12px] font-medium leading-6 text-slate-600">
-                          {point}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              {relatedStudyNotes.length > 0 && !isCompact ? (
-                <div className="mt-4 space-y-3">
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-cyan-500">
-                    {relatedStudyTitle}
-                  </p>
-                  {relatedStudyNotes.slice(0, 4).map((childNode) => (
-                    <button
-                      key={childNode.id}
-                      type="button"
-                      onClick={() => handleMindMapNodeSelect(childNode.id)}
-                      className="block w-full rounded-2xl border border-white/80 bg-white/80 px-3.5 py-3 text-left transition-all hover:border-cyan-200 hover:bg-white"
-                    >
-                      <span className="block text-[12px] font-black text-slate-800">
-                        {childNode.label}
-                      </span>
-                      {childNode.summary ? (
-                        <span className="mt-1.5 block text-[12px] font-medium leading-6 text-slate-500">
-                          {childNode.summary}
-                        </span>
-                      ) : null}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-                </>
-              )}
-            </div>
-          </section>
-
-          {childPreviewNodes.length > 0 && (
-            <section className={isCompact ? "space-y-2.5" : "space-y-3"}>
-              <div className="flex items-center justify-between gap-3">
-                <p
-                  className={`font-black uppercase tracking-[0.2em] text-slate-400 ${isCompact ? "text-[8px]" : "text-[9px]"}`}
-                >
-                  Next Branches
-                </p>
-                {branchCountLabel ? (
-                  <span
-                    className={`rounded-full bg-slate-100 font-black uppercase tracking-[0.16em] text-slate-500 ring-1 ring-slate-200/80 ${isCompact ? "px-2.5 py-1 text-[8px]" : "px-3 py-1 text-[9px]"}`}
-                  >
-                    {branchCountLabel}
-                  </span>
-                ) : null}
-              </div>
-              <div className={isCompact ? "space-y-1.5" : "space-y-2"}>
-                {childPreviewNodes.map((childNode) => (
-                  <button
-                    key={childNode.id}
-                    type="button"
-                    onClick={() => handleMindMapNodeSelect(childNode.id)}
-                    className={`block w-full border border-slate-200 bg-white text-left font-semibold text-slate-700 transition-all hover:border-cyan-200 hover:bg-cyan-50/70 hover:text-slate-950 ${isCompact ? "rounded-xl px-3 py-2.5 text-[12px]" : "rounded-2xl px-3.5 py-3 text-[13px]"}`}
-                  >
-                    {childNode.label}
-                  </button>
-                ))}
-              </div>
-              {isCompact && hiddenBranchCount > 0 ? (
-                <p className="text-[10px] font-semibold text-slate-400">
-                  {isVietnamese
-                    ? `+${hiddenBranchCount} nhánh nữa`
-                    : `+${hiddenBranchCount} more branches`}
-                </p>
-              ) : null}
-              {!isCompact && branchHint ? (
-                <p className="mt-3 text-[11px] font-semibold leading-relaxed text-slate-500">
-                  {branchHint}
-                </p>
-              ) : null}
-            </section>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const renderMindMap = () => {
-    const isShowingAllNodes = mindMapViewMode === "all";
-
-    if (!mindMapState.loading && !mindMapState.data && !mindMapState.error) {
-      return (
-        <div className="flex flex-col items-center justify-center py-10 text-center animate-fade-in">
-          <div className="relative mb-10">
-            <div className="absolute -inset-8 rounded-full bg-cyan-100/40 animate-pulse" />
-            <div className="relative flex h-20 w-20 items-center justify-center rounded-[28px] bg-gradient-to-br from-cyan-500 to-blue-600 text-white text-3xl shadow-2xl shadow-cyan-500/30">
-              <MindMapIcon className="h-8 w-8" />
-            </div>
-          </div>
-
-          <h3 className="text-[14px] font-[1000] text-slate-900 uppercase tracking-[0.2em] mb-3">
-            Mind Map
-          </h3>
-          <p className="text-[12px] font-medium text-slate-400 max-w-[240px] leading-relaxed mb-10">
-            Select a target language to generate a knowledge network from this
-            asset.
-          </p>
-
-          <div className="mb-8 flex p-1.5 rounded-2xl bg-slate-100/80 ring-1 ring-inset ring-slate-200/40 w-full max-w-[240px]">
-            <button
-              onClick={() => setSelectedLanguage("vi")}
-              className={`flex-1 rounded-xl py-2 text-[10px] font-black uppercase tracking-widest transition-all ${selectedLanguage === "vi" ? "bg-white text-cyan-600 shadow-sm ring-1 ring-slate-200/50" : "text-slate-400 hover:text-slate-600"}`}
-            >
-              Vietnamese
-            </button>
-            <button
-              onClick={() => setSelectedLanguage("en")}
-              className={`flex-1 rounded-xl py-2 text-[10px] font-black uppercase tracking-widest transition-all ${selectedLanguage === "en" ? "bg-white text-cyan-600 shadow-sm ring-1 ring-slate-200/50" : "text-slate-400 hover:text-slate-600"}`}
-            >
-              English
-            </button>
-          </div>
-
-          <button
-            onClick={() => void loadMindMap(selectedLanguage)}
-            className="group relative flex h-14 w-full items-center justify-center gap-4 overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 px-8 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-cyan-500/20 transition-all hover:scale-[1.02] active:scale-95"
-          >
-            <span>Generate Mind Map</span>
-            <ArrowLeftIcon />
-          </button>
-        </div>
-      );
-    }
-
-    if (mindMapState.loading) {
-      return (
-        <div className="flex flex-col items-center justify-center py-24 animate-in fade-in duration-700">
-          <div className="relative mb-10 flex h-36 w-36 items-center justify-center">
-            {/* Orbit paths */}
-            <div className="absolute inset-0 rounded-full border border-slate-200/60" />
-            <div className="absolute inset-6 rounded-full border border-slate-200/40" />
-            
-            {/* Orbiting nodes */}
-            <div className="absolute inset-0 animate-[spin_4s_linear_infinite]">
-              <div className="absolute -top-1.5 left-1/2 h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.8)]" />
-            </div>
-            <div className="absolute inset-6 animate-[spin_3s_linear_infinite_reverse]">
-              <div className="absolute -bottom-1.5 left-1/2 h-4 w-4 -translate-x-1/2 rounded-full bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.8)]" />
-            </div>
-            <div className="absolute inset-0 animate-[spin_5s_linear_infinite]">
-              <div className="absolute left-0 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-teal-400 shadow-[0_0_8px_rgba(45,212,191,0.8)]" />
-            </div>
-            <div className="absolute inset-6 animate-[spin_6s_linear_infinite]">
-              <div className="absolute right-0 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)]" />
-            </div>
-
-            {/* Core */}
-            <div className="absolute h-24 w-24 animate-pulse rounded-full bg-cyan-400/10 blur-xl" style={{ animationDuration: '2s' }} />
-            <div className="relative flex h-20 w-20 items-center justify-center rounded-[1.8rem] bg-white text-cyan-600 shadow-2xl shadow-cyan-500/15 ring-1 ring-cyan-100">
-              <MindMapIcon className="h-8 w-8" />
-            </div>
-          </div>
-          
-          <h3 className="text-[13px] font-[1000] text-slate-900 uppercase tracking-[0.3em] mb-3 animate-pulse">
-            Charting Knowledge Network
-          </h3>
-          <p className="text-[12px] font-medium text-slate-400 max-w-[280px] text-center leading-relaxed mb-6">
-            AI is mapping logical relationships and constructing the structural visualization matrix.
-          </p>
-          
-          <div className="mt-6 flex gap-2">
-            <div className="h-2.5 w-2.5 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-            <div className="h-2.5 w-2.5 rounded-full bg-cyan-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-            <div className="h-2.5 w-2.5 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '300ms' }} />
-          </div>
-        </div>
-      );
-    }
-
-    if (mindMapState.error)
-      return <InlineAlert tone="error">{mindMapState.error}</InlineAlert>;
-    if (!activeMindMapRoot) return null;
-
-    const activeMindMapLanguage =
-      activeMindMapVersion?.language || mindMapState.data?.language || selectedLanguage;
-
-    return (
-      <div className="flex flex-col h-full gap-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        {/* Compact Single-Row Control Bar */}
-        <div className="flex items-center justify-between gap-2 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 text-white text-xs shadow-md shadow-cyan-500/20">
-              <MindMapIcon className="h-4 w-4" />
-            </div>
-            <span className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">
-              Mind Map
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="flex p-0.5 rounded-lg bg-slate-100 ring-1 ring-slate-200/40">
-              <button
-                type="button"
-                onClick={() => handleMindMapLanguageChange("vi")}
-                className={`rounded-md px-2.5 py-1 text-[9px] font-black uppercase tracking-widest transition-all ${
-                  activeMindMapLanguage === "vi"
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-400 hover:text-slate-700"
-                }`}
-              >
-                VI
-              </button>
-              <button
-                type="button"
-                onClick={() => handleMindMapLanguageChange("en")}
-                className={`rounded-md px-2.5 py-1 text-[9px] font-black uppercase tracking-widest transition-all ${
-                  activeMindMapLanguage === "en"
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-400 hover:text-slate-700"
-                }`}
-              >
-                EN
-              </button>
-            </div>
-            <div className="flex p-0.5 rounded-lg bg-slate-100 ring-1 ring-slate-200/40">
-              <button
-                type="button"
-                onClick={() => handleMindMapViewModeChange("explore")}
-                className={`rounded-md px-2.5 py-1 text-[9px] font-black uppercase tracking-widest transition-all ${
-                  !isShowingAllNodes
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-400 hover:text-slate-700"
-                }`}
-              >
-                Explore
-              </button>
-              <button
-                type="button"
-                onClick={() => handleMindMapViewModeChange("all")}
-                className={`rounded-md px-2.5 py-1 text-[9px] font-black uppercase tracking-widest transition-all ${
-                  isShowingAllNodes
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-400 hover:text-slate-700"
-                }`}
-              >
-                All
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsMindMapHistoryOpen(true)}
-              className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 ring-1 ring-slate-200/40 transition-all hover:bg-white hover:text-cyan-600"
-              title="Open mind map history"
-            >
-              <HistoryIcon className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMindMapInstructionError("");
-                setIsMindMapRefreshConfirmOpen(true);
-              }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 ring-1 ring-slate-200/40 transition-all hover:bg-white hover:text-cyan-600"
-              title="Create custom mind map"
-            >
-              <SparklesIcon className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsMindMapModalOpen(true)}
-              className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-cyan-500 hover:text-white transition-all ring-1 ring-slate-200/40"
-              title="Full Screen"
-            >
-              <ExpandIcon />
-            </button>
-          </div>
-        </div>
-
-        {/* Canvas takes the remaining available space */}
-        <div className="relative flex-1 rounded-[1.5rem] bg-slate-50/60 border border-slate-200/60 overflow-hidden shadow-inner min-h-0">
-          <Suspense fallback={<Skeleton className="h-full w-full rounded-none" />}>
-            <MindMapCanvas
-              mindMap={activeMindMapRoot}
-              selectedNodeId={selectedMindMapNode?.id}
-              expandedNodeIds={expandedMindMapNodeIdSet}
-              showAllNodes={isShowingAllNodes}
-              onNodeSelect={handleMindMapNodeSelect}
-              onNodeToggle={handleMindMapNodeToggle}
-              language={activeMindMapLanguage}
-              height="100%"
-              compact
-            />
-          </Suspense>
-
-          {/* Node detail overlay inside the canvas */}
-          {selectedMindMapNode && (
-            <div className="pointer-events-none absolute bottom-3 right-3">
-              {renderMindMapNodeDetail("compact")}
-            </div>
           )}
         </div>
       </div>
@@ -3115,163 +2088,6 @@ const DocumentViewer = () => {
     </div>
   );
 
-  const renderMindMapModal = () => {
-    if (!activeMindMapRoot) {
-      return null;
-    }
-
-    const mindMapLanguage =
-      activeMindMapVersion?.language || mindMapState.data?.language || selectedLanguage;
-    const isShowingAllNodes = mindMapViewMode === "all";
-
-    return (
-      <div className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/40 p-6 backdrop-blur-md animate-in fade-in duration-500">
-        <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[32px] border border-white/20 bg-white shadow-2xl animate-in zoom-in-95 duration-500">
-          {/* Header */}
-          <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-100 px-8 bg-white/80 backdrop-blur-xl">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/10">
-                <MindMapIcon className="h-4 w-4" />
-              </div>
-              <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-900">
-                Mind Map
-              </h2>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="flex p-1 rounded-xl bg-slate-100 ring-1 ring-slate-200/40">
-                <button
-                  type="button"
-                  onClick={() => handleMindMapLanguageChange("vi")}
-                  className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
-                    mindMapLanguage === "vi"
-                      ? "bg-white text-slate-900 shadow-sm"
-                      : "text-slate-400 hover:text-slate-700"
-                  }`}
-                >
-                  VI
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleMindMapLanguageChange("en")}
-                  className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
-                    mindMapLanguage === "en"
-                      ? "bg-white text-slate-900 shadow-sm"
-                      : "text-slate-400 hover:text-slate-700"
-                  }`}
-                >
-                  EN
-                </button>
-              </div>
-
-              <div className="flex p-1 rounded-xl bg-slate-100 ring-1 ring-slate-200/40">
-                <button
-                  type="button"
-                  onClick={() => handleMindMapViewModeChange("explore")}
-                  className={`rounded-lg px-4 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
-                    !isShowingAllNodes
-                      ? "bg-cyan-500 text-white shadow-sm"
-                      : "text-slate-400 hover:text-slate-700"
-                  }`}
-                >
-                  Explore
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleMindMapViewModeChange("all")}
-                  className={`rounded-lg px-4 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
-                    isShowingAllNodes
-                      ? "bg-cyan-500 text-white shadow-sm"
-                      : "text-slate-400 hover:text-slate-700"
-                  }`}
-                >
-                  Full View
-                </button>
-              </div>
-
-              <button
-    type="button"
-    disabled={mindMapState.loading}
-    onClick={() => {
-      setMindMapInstructionError("");
-      setIsMindMapRefreshConfirmOpen(true);
-    }}
-    className={`flex h-8 items-center gap-2 rounded-xl px-4 text-[9px] font-black uppercase tracking-widest transition-all ${mindMapState.loading ? "bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100 ring-0" : "bg-slate-100 text-slate-600 ring-1 ring-slate-200/40 hover:bg-white hover:text-cyan-600 hover:shadow-sm"}`}
-  >
-    {mindMapState.loading ? (
-      <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-      </svg>
-    ) : (
-      <SparklesIcon className="h-3.5 w-3.5" />
-    )}
-    <span className="hidden sm:inline">
-      {mindMapState.loading ? "Generating..." : "New Map"}
-    </span>
-  </button>
-
-              <button
-                type="button"
-                onClick={() => setIsMindMapModalOpen(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-all"
-              >
-                <CloseIcon />
-              </button>
-            </div>
-          </div>
-
-          {/* Visualization Canvas */}
-          <div className="relative min-h-0 flex-1 flex overflow-hidden bg-slate-50/40">
-            {mindMapState.loading && (
-              <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-white/60 backdrop-blur-sm transition-all duration-500 animate-in fade-in zoom-in-95">
-                <div className="relative flex h-24 w-24 items-center justify-center mb-6">
-                  <div className="absolute inset-0 animate-[spin_4s_linear_infinite] rounded-full border-2 border-transparent border-t-cyan-500 border-l-cyan-300" />
-                  <div className="absolute inset-2 animate-[spin_3s_linear_infinite_reverse] rounded-full border-2 border-transparent border-b-blue-500 border-r-blue-300" />
-                  <div className="absolute inset-4 animate-[spin_5s_linear_infinite] rounded-full border border-slate-200/50" />
-                  <div className="absolute h-16 w-16 animate-pulse rounded-full bg-cyan-400/20 blur-xl" style={{ animationDuration: '2s' }} />
-                  <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-cyan-500 shadow-xl shadow-cyan-500/20 ring-1 ring-cyan-100">
-                    <MindMapIcon className="h-6 w-6" />
-                  </div>
-                </div>
-                <h3 className="text-[12px] font-[1000] uppercase tracking-[0.3em] text-slate-900 animate-pulse mb-2">
-                  Re-charting Network
-                </h3>
-                <p className="text-[11px] font-medium text-slate-500 max-w-[200px] text-center">
-                  AI is restructuring and translating the knowledge nodes...
-                </p>
-              </div>
-            )}
-            <Suspense fallback={<Skeleton className="h-full w-full rounded-none" />}>
-              <MindMapCanvas
-                mindMap={activeMindMapRoot}
-                selectedNodeId={selectedMindMapNode?.id}
-                expandedNodeIds={expandedMindMapNodeIdSet}
-                showAllNodes={isShowingAllNodes}
-                onNodeSelect={handleMindMapNodeSelect}
-                onNodeToggle={handleMindMapNodeToggle}
-                language={mindMapLanguage}
-                height="100%"
-                compact={false}
-              />
-            </Suspense>
-
-            {selectedMindMapNode && (
-              <>
-                <div className="pointer-events-none absolute inset-x-4 bottom-4 xl:hidden">
-                  {renderMindMapNodeDetail("canvas")}
-                </div>
-                <div className="pointer-events-none absolute bottom-6 right-6 top-6 hidden xl:flex">
-                  {renderMindMapNodeDetail("floating")}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   const renderToolbar = () => {
     return (
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/80 px-6 backdrop-blur-xl transition-all">
@@ -3689,156 +2505,6 @@ const DocumentViewer = () => {
     );
   };
 
-  const renderMindMapHistoryModal = () => {
-    if (!mindMapState.data || !activeMindMapVersion) return null;
-
-    const activeSlot =
-      activeMindMapVersion.slot || selectedMindMapSlot || "default";
-    const hasMindMapHistory = mindMapHistoryVersions.length > 0;
-
-    const handleSelectMindMapVersion = (slot) => {
-      handleMindMapSlotChange(slot);
-      setIsMindMapHistoryOpen(false);
-    };
-
-    return (
-      <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/50 p-5 backdrop-blur-md animate-in fade-in duration-300">
-        <div className="w-full max-w-lg overflow-hidden rounded-[2.5rem] border border-white/40 bg-white/90 shadow-2xl backdrop-blur-2xl animate-in zoom-in-95 duration-300">
-          <div className="flex items-center justify-between border-b border-slate-100 px-8 py-7">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20">
-                <MindMapIcon className="h-6 w-6" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-[1000] tracking-tight text-slate-900">
-                  Mind Map History
-                </h3>
-                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
-                  Default and custom maps
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsMindMapHistoryOpen(false)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-500"
-            >
-              <CloseIcon />
-            </button>
-          </div>
-
-          <div className="max-h-[60vh] space-y-8 overflow-y-auto p-8 scrollbar-none">
-            <div className="space-y-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">
-                AI Baseline
-              </p>
-              <button
-                type="button"
-                onClick={() => handleSelectMindMapVersion("default")}
-                className={`flex w-full items-center gap-4 rounded-[2rem] border p-5 text-left transition-all ${
-                  activeSlot === "default"
-                    ? "border-cyan-200 bg-cyan-50/70 shadow-sks-soft"
-                    : "border-slate-100 bg-white hover:border-cyan-100 hover:bg-cyan-50/40"
-                }`}
-              >
-                <div
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-                    activeSlot === "default"
-                      ? "bg-cyan-500 text-white"
-                      : "bg-slate-100 text-slate-400"
-                  }`}
-                >
-                  <RestoreIcon className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-[1000] text-slate-900">
-                    {defaultMindMapVersion?.root?.label ||
-                      defaultMindMapVersion?.mindMap?.label ||
-                      "System Default Mind Map"}
-                  </p>
-                  <p className="mt-1 text-[11px] font-semibold text-slate-500">
-                    Standard AI mind map generated from the document.
-                  </p>
-                </div>
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">
-                Custom Personalizations
-              </p>
-              {hasMindMapHistory ? (
-                <div className="space-y-3">
-                  {mindMapHistoryVersions.map((version, index) => {
-                    const isSelected = version.slot === activeSlot;
-                    const generatedLabel = formatSummaryHistoryTimestamp(
-                      version.generatedAt,
-                    );
-                    const promptText =
-                      typeof version.instruction === "string" &&
-                      version.instruction.trim()
-                        ? version.instruction.trim()
-                        : null;
-
-                    return (
-                      <button
-                        key={`${version.slot}-${index}`}
-                        type="button"
-                        onClick={() => handleSelectMindMapVersion(version.slot)}
-                        className={`flex w-full flex-col gap-3 rounded-[2rem] border p-5 text-left transition-all ${
-                          isSelected
-                            ? "border-blue-200 bg-blue-50/70 shadow-sks-soft"
-                            : "border-slate-100 bg-white hover:border-blue-100 hover:bg-blue-50/30"
-                        }`}
-                      >
-                        <div className="flex items-start gap-4">
-                          <div
-                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-                              isSelected
-                                ? "bg-blue-500 text-white"
-                                : "bg-slate-100 text-slate-400"
-                            }`}
-                          >
-                            <MindMapIcon className="h-5 w-5" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-[15px] font-[1000] text-slate-900">
-                              {version.root?.label ||
-                                version.mindMap?.label ||
-                                `Custom Mind Map ${index + 1}`}
-                            </p>
-                            <p className="mt-1 text-[10px] font-bold text-slate-400">
-                              {generatedLabel || "Recently generated"}
-                            </p>
-                          </div>
-                        </div>
-                        {promptText ? (
-                          <p className="line-clamp-2 rounded-2xl bg-slate-950/5 px-4 py-3 text-[11px] font-semibold italic leading-relaxed text-slate-600">
-                            "{promptText}"
-                          </p>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="rounded-[2rem] border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
-                  <HistoryIcon className="mx-auto h-8 w-8 text-slate-300" />
-                  <p className="mt-4 text-[12px] font-[1000] uppercase tracking-[0.2em] text-slate-500">
-                    History Empty
-                  </p>
-                  <p className="mt-2 text-[12px] font-medium text-slate-400">
-                    Create a custom mind map to save it here.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   const renderSummaryRefreshConfirmModal = () => {
     if (!summaryState.data) return null;
 
@@ -3945,112 +2611,6 @@ const DocumentViewer = () => {
     );
   };
 
-  const renderMindMapRefreshConfirmModal = () => {
-    if (!activeMindMapRoot) return null;
-
-    const activeMindMapLanguage =
-      activeMindMapVersion?.language || mindMapState.data?.language || selectedLanguage;
-    const customExists = mindMapHistoryVersions.length > 0;
-
-    return (
-      <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/50 p-5 backdrop-blur-md animate-in fade-in duration-300">
-        <div className="w-full max-w-md rounded-[2rem] border border-white/15 bg-white p-8 shadow-2xl animate-in zoom-in-95 duration-300">
-          <div className="flex items-start justify-between gap-6">
-            <div className="space-y-3">
-              <p className="text-[9px] font-black uppercase tracking-[0.35em] text-slate-400">
-                Custom Mind Map
-              </p>
-              <h3 className="text-2xl font-[1000] tracking-tight text-slate-900">
-                {customExists
-                  ? "Replace the current custom mind map"
-                  : "Create a new custom mind map"}
-              </h3>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setIsMindMapRefreshConfirmOpen(false);
-                setMindMapInstructionError("");
-              }}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-500"
-            >
-              <CloseIcon />
-            </button>
-          </div>
-
-          <div className="mt-6 space-y-3">
-            <label
-              htmlFor="mindmap-instruction"
-              className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500"
-            >
-              How should this mind map be generated?
-            </label>
-            <textarea
-              id="mindmap-instruction"
-              value={mindMapInstructionDraft}
-              onChange={(event) => {
-                setMindMapInstructionDraft(event.target.value);
-                if (mindMapInstructionError) {
-                  setMindMapInstructionError("");
-                }
-              }}
-              rows={5}
-              placeholder="Example: Make it exam-oriented, show causes and effects, and group definitions separately."
-              className="w-full resize-none rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] font-medium leading-6 text-slate-900 outline-none transition-all focus:border-cyan-400 focus:bg-white focus:shadow-lg focus:shadow-cyan-500/10"
-            />
-            {mindMapInstructionError ? (
-              <InlineAlert tone="error">{mindMapInstructionError}</InlineAlert>
-            ) : null}
-          </div>
-
-          <div className="mt-8 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setIsMindMapRefreshConfirmOpen(false);
-                setMindMapInstructionError("");
-              }}
-              className="rounded-2xl border border-slate-200 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-900"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const trimmedInstruction = mindMapInstructionDraft.trim();
-
-                if (!trimmedInstruction) {
-                  setMindMapInstructionError(
-                    "Please describe how the new mind map should be generated.",
-                  );
-                  return;
-                }
-
-                setMindMapInstructionError("");
-                setIsMindMapRefreshConfirmOpen(false);
-                void (async () => {
-                  const created = await loadMindMap(activeMindMapLanguage, {
-                    forceRefresh: true,
-                    slot: "custom",
-                    instruction: trimmedInstruction,
-                  });
-
-                  if (!created) {
-                    setIsMindMapRefreshConfirmOpen(true);
-                  }
-                })();
-              }}
-              disabled={mindMapState.loading}
-              className="rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 px-6 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-cyan-500/20 transition-all hover:scale-[1.02] active:scale-95"
-            >
-              {customExists ? "Replace Custom Map" : "Create Custom Map"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   /* Render */
   const filePresentation = useMemo(
     () => getFilePresentation(documentData || { title: "", fileRef: "" }),
@@ -4102,6 +2662,13 @@ const DocumentViewer = () => {
                 </h2>
                 <p className="text-slate-500 font-medium max-w-xs">{error}</p>
               </div>
+            ) : docxHtml ? (
+              <div className="h-full w-full overflow-auto bg-white">
+                <div
+                  className="docx-preview mx-auto max-w-3xl px-10 py-10"
+                  dangerouslySetInnerHTML={{ __html: docxHtml }}
+                />
+              </div>
             ) : canPreview && fileUrl ? (
               <iframe
                 src={`${fileUrl}#toolbar=0`}
@@ -4120,7 +2687,7 @@ const DocumentViewer = () => {
                 </h2>
                 <p className="text-slate-500 font-medium mb-12 max-w-sm mx-auto leading-relaxed">
                   Preview for this file type is not available here. Use the side
-                  panel to read the summary or explore the mind map.
+                  panel to read the summary or ask AI.
                 </p>
                 <div className="flex gap-4 justify-center">
                   <button
@@ -4212,15 +2779,16 @@ const DocumentViewer = () => {
 
             {/* AI Content Area */}
             <div
+              ref={aiPanelRef}
+              onScroll={handleAiPanelScroll}
               className={`flex-1 min-h-0 animate-soft-reveal scrollbar-none ${
-                activeTab === "mindmap" || activeTab === "ask" || activeTab === "note"
+                activeTab === "ask" || activeTab === "note"
                   ? "flex flex-col overflow-hidden px-6 pt-4 pb-0"
                   : "overflow-y-auto px-6 py-5 pb-24"
               }`}
               key={activeTab}
             >
               {activeTab === "summary" && renderSummary()}
-              {activeTab === "mindmap" && renderMindMap()}
               {activeTab === "ask" && renderAsk()}
               {activeTab === "note" && renderSksNote()}
               {activeTab === "related" && renderRelated()}
@@ -4230,14 +2798,11 @@ const DocumentViewer = () => {
       </div>
 
       {/* ELITE SUMMARY MODAL */}
-      {isMindMapModalOpen && renderMindMapModal()}
       {isSummaryModalOpen && renderSummaryModal()}
       {isSummaryHistoryOpen && renderSummaryHistoryModal()}
-      {isMindMapHistoryOpen && renderMindMapHistoryModal()}
       {isNoteHistoryOpen && renderNoteHistoryModal()}
       {isNoteTitleModalOpen && renderNoteTitleModal()}
       {isSummaryRefreshConfirmOpen && renderSummaryRefreshConfirmModal()}
-      {isMindMapRefreshConfirmOpen && renderMindMapRefreshConfirmModal()}
     </div>
   );
 };

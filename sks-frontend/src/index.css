@@ -263,4 +263,25 @@
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background: rgba(0, 0, 0, 0.2);
   }
+
+  /* DOCX preview (mammoth-generated HTML) */
+  .docx-preview { font-family: 'Inter', sans-serif; color: #1e293b; line-height: 1.75; }
+  .docx-preview h1 { font-size: 1.75rem; font-weight: 800; margin: 1.5rem 0 0.75rem; color: #0f172a; letter-spacing: -0.03em; }
+  .docx-preview h2 { font-size: 1.375rem; font-weight: 700; margin: 1.25rem 0 0.5rem; color: #0f172a; letter-spacing: -0.02em; }
+  .docx-preview h3 { font-size: 1.125rem; font-weight: 700; margin: 1rem 0 0.4rem; color: #1e293b; }
+  .docx-preview h4, .docx-preview h5, .docx-preview h6 { font-size: 1rem; font-weight: 600; margin: 0.75rem 0 0.35rem; color: #334155; }
+  .docx-preview p { margin: 0 0 0.85rem; font-size: 0.9375rem; }
+  .docx-preview ul, .docx-preview ol { padding-left: 1.5rem; margin: 0.5rem 0 0.85rem; }
+  .docx-preview li { margin-bottom: 0.3rem; font-size: 0.9375rem; }
+  .docx-preview ul li { list-style-type: disc; }
+  .docx-preview ol li { list-style-type: decimal; }
+  .docx-preview table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.875rem; }
+  .docx-preview th { background: #f1f5f9; font-weight: 700; text-align: left; padding: 0.6rem 0.9rem; border: 1px solid #e2e8f0; color: #0f172a; }
+  .docx-preview td { padding: 0.5rem 0.9rem; border: 1px solid #e2e8f0; color: #334155; }
+  .docx-preview tr:nth-child(even) td { background: #f8fafc; }
+  .docx-preview strong, .docx-preview b { font-weight: 700; color: #0f172a; }
+  .docx-preview em, .docx-preview i { font-style: italic; }
+  .docx-preview a { color: #0ea5e9; text-decoration: underline; }
+  .docx-preview hr { border: none; border-top: 1px solid #e2e8f0; margin: 1.5rem 0; }
+  .docx-preview img { max-width: 100%; border-radius: 8px; margin: 0.5rem 0; }
 }

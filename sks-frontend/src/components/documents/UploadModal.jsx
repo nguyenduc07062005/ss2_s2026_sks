@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
 const UploadModal = ({
@@ -10,8 +10,9 @@ const UploadModal = ({
 }) => {
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState("");
-  const [selectedFolderId, setSelectedFolderId] = useState("");
-  const [isUploading, setIsUploading] = useState(false);
+  const [selectedFolderId, setSelectedFolderId] = useState(
+    defaultFolderId || "",
+  );
   const [error, setError] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
@@ -26,15 +27,6 @@ const UploadModal = ({
   );
 
   const maxFileSize = 10 * 1024 * 1024;
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    setSelectedFolderId(defaultFolderId || "");
-    setError("");
-  }, [defaultFolderId, isOpen]);
 
   if (!isOpen) {
     return null;
@@ -111,7 +103,7 @@ const UploadModal = ({
     setError(validationError || "Please select a valid file.");
   };
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = (event) => {
     event.preventDefault();
 
     if (!file) {
@@ -119,22 +111,32 @@ const UploadModal = ({
       return;
     }
 
-    setIsUploading(true);
-    setError("");
+    // Capture values before clearing state
+    const uploadFile = file;
+    const uploadTitle = title || file.name;
+    const uploadFolderId = selectedFolderId || null;
 
-    try {
-      await onUploadSuccess(file, title || file.name, selectedFolderId || null);
-      setFile(null);
-      setTitle("");
-      setSelectedFolderId(defaultFolderId || "");
-      onClose();
-      toast.success("Document uploaded & processed successfully!");
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Upload failed. Please try again.");
-      setError(err.response?.data?.message || "Upload failed. Please try again.");
-    } finally {
-      setIsUploading(false);
-    }
+    // Close modal immediately — don't make the user wait
+    setFile(null);
+    setTitle("");
+    setSelectedFolderId(defaultFolderId || "");
+    setError("");
+    onClose();
+
+    // Fire upload in background — toast notifies the user of the result
+    const toastId = toast.loading(`Uploading "${uploadTitle}"…`);
+    onUploadSuccess(uploadFile, uploadTitle, uploadFolderId)
+      .then(() => {
+        toast.success(`"${uploadTitle}" uploaded. AI indexing is running.`, {
+          id: toastId,
+        });
+      })
+      .catch((err) => {
+        toast.error(
+          err?.response?.data?.message || `Upload failed for "${uploadTitle}".`,
+          { id: toastId },
+        );
+      });
   };
 
   const clearFile = () => {
@@ -201,17 +203,12 @@ const UploadModal = ({
           {/* Right panel */}
           <div className="px-7 py-6 sm:px-8">
             <div className="mb-5 flex items-center justify-between">
-              <p className="text-[11px] font-[1000] uppercase tracking-[0.2em] text-slate-400 transition-all">
-                {isUploading ? "Integrating Data..." : "Upload Form"}
+              <p className="text-[11px] font-[1000] uppercase tracking-[0.2em] text-slate-400">
+                Upload Form
               </p>
               <button
-                onClick={isUploading ? undefined : onClose}
-                disabled={isUploading}
-                className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition-all ${
-                  isUploading
-                    ? "pointer-events-none scale-90 opacity-0"
-                    : "bg-slate-100/80 text-slate-500 hover:rotate-90 hover:bg-rose-50 hover:text-rose-600 active:scale-90"
-                }`}
+                onClick={onClose}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100/80 text-slate-500 hover:rotate-90 hover:bg-rose-50 hover:text-rose-600 active:scale-90 transition-all"
                 aria-label="Close"
               >
                 <svg
@@ -225,61 +222,7 @@ const UploadModal = ({
               </button>
             </div>
 
-            {isUploading ? (
-              <div className="min-h-[300px] animate-in fade-in zoom-in-95 duration-500 flex flex-col items-center justify-center py-10">
-                <div className="relative mb-8 flex h-32 w-32 items-center justify-center">
-                  <div className="absolute inset-0 animate-[spin_4s_linear_infinite] rounded-full border border-cyan-400/20 shadow-[0_0_20px_rgba(34,211,238,0.2)]" />
-                  <div className="absolute -inset-2 animate-[spin_6s_linear_infinite_reverse] rounded-full border border-dashed border-blue-500/30" />
-                  <div className="absolute -inset-4 animate-[spin_8s_linear_infinite] rounded-full border border-cyan-300/10" />
-                  <div
-                    className="absolute h-20 w-20 animate-pulse rounded-full bg-cyan-400/20 blur-xl"
-                    style={{ animationDuration: "2s" }}
-                  />
-                  <div className="relative flex h-16 w-16 items-center justify-center rounded-[1.2rem] bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-[0_0_30px_rgba(6,182,212,0.4)]">
-                    <svg
-                      className="h-7 w-7 animate-pulse"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={2}
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.742 3.742 0 0115.75 19.5H6.75z"
-                      />
-                    </svg>
-                  </div>
-                  <div className="absolute bottom-0 top-0 left-1/2 w-20 -translate-x-1/2 overflow-hidden rounded-full">
-                    <div className="absolute left-0 right-0 h-1 animate-[bounce_2s_infinite] bg-white/70 blur-[1px]" />
-                  </div>
-                </div>
-
-                <h3 className="mb-2 animate-pulse text-[13px] font-[1000] uppercase tracking-[0.3em] text-slate-900">
-                  Processing & Embedding
-                </h3>
-                <p className="max-w-[220px] text-center text-[11px] font-medium leading-relaxed text-slate-400">
-                  Extracting structural knowledge and synchronizing with AI
-                  memory cortex...
-                </p>
-                <div className="mt-8 flex gap-1.5">
-                  <div
-                    className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-400"
-                    style={{ animationDelay: "0ms" }}
-                  />
-                  <div
-                    className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-500"
-                    style={{ animationDelay: "150ms" }}
-                  />
-                  <div
-                    className="h-1.5 w-1.5 animate-bounce rounded-full bg-blue-500"
-                    style={{ animationDelay: "300ms" }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <form className="space-y-4" onSubmit={handleSubmit}>
+            <form className="space-y-4" onSubmit={handleSubmit}>
                 <div
                   className={`group/drop relative cursor-pointer overflow-hidden rounded-[24px] border-2 border-dashed p-6 text-center transition-all duration-500 ${
                     isDragOver
@@ -433,64 +376,29 @@ const UploadModal = ({
 
                 <button
                   type="submit"
-                  disabled={isUploading || !file}
+                  disabled={!file}
                   className="group relative mt-2 w-full overflow-hidden rounded-[20px] bg-slate-900 p-px shadow-2xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:scale-100 disabled:opacity-50"
                 >
                   <div className="absolute inset-0 animate-gradient bg-[length:200%_100%] bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 opacity-0 transition-opacity group-hover:opacity-100" />
-                  <div
-                    className={`relative flex h-[52px] items-center justify-center rounded-[19px] px-5 text-sm font-[1000] tracking-wide text-white transition-all ${
-                      isUploading
-                        ? "bg-transparent"
-                        : "bg-gradient-to-r from-cyan-600 to-blue-600"
-                    }`}
-                  >
+                  <div className="relative flex h-[52px] items-center justify-center rounded-[19px] bg-gradient-to-r from-cyan-600 to-blue-600 px-5 text-sm font-[1000] tracking-wide text-white">
                     <span className="flex items-center gap-2 drop-shadow-md">
-                      {isUploading ? (
-                        <>
-                          <svg
-                            className="h-4 w-4 animate-spin text-white"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            />
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                            />
-                          </svg>
-                          Transmitting...
-                        </>
-                      ) : (
-                        <>
-                          Upload Document
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                            className="h-4 w-4 transition-transform group-hover:translate-x-1"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </>
-                      )}
+                      Upload Document
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="h-4 w-4 transition-transform group-hover:translate-x-1"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
                     </span>
                   </div>
                 </button>
               </form>
-            )}
           </div>
         </div>
       </div>

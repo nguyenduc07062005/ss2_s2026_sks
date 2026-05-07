@@ -7,12 +7,18 @@ export const STUDY_GPS_GOALS = [
   'understand_lesson',
 ] as const;
 export const STUDY_GPS_LEVELS = ['weak', 'average', 'good'] as const;
+export const QUIZ_DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
+export const QUIZ_QUESTION_TYPES = ['multiple_choice', 'true_false'] as const;
+export const QUIZ_QUESTION_COUNTS = [5, 10, 15] as const;
 
 export type SummaryLanguage = (typeof SUMMARY_LANGUAGES)[number];
 export type SummaryVersionSlot = (typeof SUMMARY_VERSION_SLOTS)[number];
 export type SummaryFormat = (typeof SUMMARY_FORMATS)[number];
 export type StudyGpsGoal = (typeof STUDY_GPS_GOALS)[number];
 export type StudyGpsLevel = (typeof STUDY_GPS_LEVELS)[number];
+export type QuizDifficulty = (typeof QUIZ_DIFFICULTIES)[number];
+export type QuizQuestionType = (typeof QUIZ_QUESTION_TYPES)[number];
+export type QuizQuestionCount = (typeof QUIZ_QUESTION_COUNTS)[number];
 
 export type RagSource = {
   documentId: string;
@@ -20,7 +26,7 @@ export type RagSource = {
   chunkIndex: number;
   pageNumber: number | null;
   snippet: string;
-  score: number;
+  score: number | null;
 };
 
 export type AskHistoryItem = {
@@ -74,67 +80,46 @@ export type SummaryLanguageCache = {
   versions?: Partial<Record<SummaryVersionSlot, SummaryArtifact>>;
 };
 
-export type MindMapNodeKind =
-  | 'root'
-  | 'overview'
-  | 'cluster'
-  | 'insight'
-  | 'detail'
-  | 'takeaway';
-
-export type MindMapNodeStudyNote = {
-  overview: string;
-  explanation: string;
-  keyPoints: string[];
-  studyFocus: string;
-};
-
-export type MindMapNode = {
+export type QuizOption = {
   id: string;
-  label: string;
-  summary: string;
-  kind: MindMapNodeKind;
-  children: MindMapNode[];
-  studyNote?: MindMapNodeStudyNote | null;
+  text: string;
 };
 
-export type MindMapArtifact = {
-  root: MindMapNode;
-  summaryText: string;
+export type QuizQuestion = {
+  id: string;
+  type: QuizQuestionType;
+  difficulty: QuizDifficulty;
+  question: string;
+  options: QuizOption[];
+  correctOptionId: string;
+  explanation: string;
+  sourceSnippet: string;
+};
+
+export type QuizDocumentRef = {
+  id: string;
+  title: string;
+};
+
+export type DocumentQuizResponse = {
+  quizId: string;
+  language: SummaryLanguage;
+  difficulty: QuizDifficulty;
+  questionType: QuizQuestionType;
+  questionCount: number;
   generatedAt: string;
-  summaryLanguage: SummaryLanguage;
-  version: number;
-  slot: SummaryVersionSlot;
-  instruction?: string | null;
+  documents: QuizDocumentRef[];
+  questions: QuizQuestion[];
   sources: RagSource[];
 };
 
-export type MindMapVersionResponse = MindMapArtifact & {
-  active: boolean;
-};
-
-export type MindMapLanguageCache = {
-  activeSlot?: SummaryVersionSlot;
-  versions?: Partial<Record<SummaryVersionSlot, MindMapArtifact>>;
-};
-
-export type DocumentMindMapResponse = {
-  mindMap: MindMapNode;
-  summary: string;
-  language: SummaryLanguage;
-  generatedAt: string;
-  cached: boolean;
-  slot: SummaryVersionSlot;
-  instruction?: string | null;
-  activeSlot: SummaryVersionSlot;
-  versions: MindMapVersionResponse[];
-};
-
-export type MindMapNodeStudyNoteResponse = MindMapNodeStudyNote & {
-  label: string;
-  language: SummaryLanguage;
-  generatedAt: string;
+export type QuizChatHistoryItem = {
+  id: string;
+  documentIds: string[];
+  question: string;
+  answer: string;
   sources: RagSource[];
+  createdAt: string;
 };
 
 export type StudyGpsDocumentRef = {
@@ -183,14 +168,22 @@ export type StudyGpsPlanResponse = {
   updatedAt: string;
 };
 
-export type DiagramArtifact = {
-  mermaid: string;
-  summaryText: string;
+export type StoredRagArtifact<TPayload = unknown> = {
+  key: string;
+  artifactType: 'summary' | 'study_gps';
+  language: SummaryLanguage;
+  mode: string;
+  documentId: string;
+  contentHash: string;
+  instructionHash: string;
+  artifactVersion: number;
   generatedAt: string;
-  summaryLanguage: SummaryLanguage;
+  payload: TPayload;
 };
 
 export type DocumentArtifactCache = {
+  artifactsByKey?: Record<string, StoredRagArtifact>;
+  activeArtifactKeys?: Record<string, string>;
   summary?: {
     text: string;
     sources: RagSource[];
@@ -199,10 +192,6 @@ export type DocumentArtifactCache = {
   summaryByLanguage?: Partial<
     Record<SummaryLanguage, SummaryLanguageCache | SummaryArtifact>
   >;
-  mindMapByLanguage?: Partial<
-    Record<SummaryLanguage, MindMapLanguageCache | MindMapArtifact>
-  >;
-  diagram?: DiagramArtifact;
 };
 
 export type IndexingResult = {

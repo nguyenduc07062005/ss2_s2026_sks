@@ -1,13 +1,21 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Inject, Query } from '@nestjs/common';
 import { GeminiService } from './gemini.service';
+import {
+  LLM_GENERATION_SERVICE,
+  type LlmGenerationService,
+} from './llm-generation.types';
 
 @Controller('llm')
 export class LlmController {
-  constructor(private readonly geminiService: GeminiService) {}
+  constructor(
+    private readonly geminiService: GeminiService,
+    @Inject(LLM_GENERATION_SERVICE)
+    private readonly generationService: LlmGenerationService,
+  ) {}
 
   @Get('test')
   async testAi(@Query('prompt') prompt: string) {
-    const response = await this.geminiService.generateText(prompt);
+    const response = await this.generationService.generateText(prompt);
     return {
       success: true,
       prompt,

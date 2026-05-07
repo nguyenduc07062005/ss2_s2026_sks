@@ -1,0 +1,64 @@
+services:
+  - type: web
+    name: sks-s2026-backend
+    runtime: node
+    plan: free
+    rootDir: sks-backend
+    buildCommand: npm ci && npm run build
+    preDeployCommand: npm run migration:run
+    startCommand: npm run start:prod
+    healthCheckPath: /api
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22.22.0"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sks-s2026-postgres
+          property: connectionString
+      - key: DATABASE_SYNC
+        value: "false"
+      - key: DATABASE_LOGGING
+        value: "false"
+      - key: CORS_ORIGIN
+        value: https://sks-s2026-frontend.onrender.com
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: "1d"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_EMBEDDING_MODEL
+        value: gemini-embedding-001
+      - key: MIMO_API_KEY
+        sync: false
+      - key: MIMO_BASE_URL
+        value: https://api.xiaomimimo.com/v1
+      - key: MIMO_MODEL
+        value: mimo-v2.5-pro
+
+  - type: web
+    name: sks-s2026-frontend
+    runtime: static
+    plan: free
+    rootDir: sks-frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: "22.22.0"
+      - key: VITE_API_BASE_URL
+        value: https://sks-s2026-backend.onrender.com/api
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+databases:
+  - name: sks-s2026-postgres
+    databaseName: sks_s2026
+    user: sks_user
+    plan: free

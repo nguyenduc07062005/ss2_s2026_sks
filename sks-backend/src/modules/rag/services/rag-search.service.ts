@@ -1,7 +1,30 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import pgvector from 'pgvector';
 import { DataSource } from 'typeorm';
 import { GeminiService } from 'src/common/llm/gemini.service';
+import {
+  RawRow,
+  runRawQuery,
+  readRequiredString,
+  readString,
+  readNullableString,
+  readNumber,
+  readNullableNumber,
+} from 'src/common/utils/raw-query.util';
+import {
+  normalizeComparisonText,
+  normalizeSearchText,
+} from 'src/common/utils/text-normalization.util';
+import { formatFileSize, toVectorSql } from '../shared-rag.util';
+import {
+  DEFAULT_SEARCH_LIMIT,
+  DEFAULT_RELATED_LIMIT,
+  SEMANTIC_SCORE_THRESHOLD,
+  SEMANTIC_STRONG_MATCH_THRESHOLD,
+  SOURCE_SNIPPET_LENGTH,
+  SEARCH_CONCEPT_LIMIT,
+  CONTEXT_SEARCH_STOPWORDS,
+} from '../constants';
 import { Document } from 'src/database/entities/document.entity';
 import { Folder } from 'src/database/entities/folder.entity';
 import { UserDocument } from 'src/database/entities/user-document.entity';
@@ -10,60 +33,9 @@ import { FolderRepository } from 'src/database/repositories/folder.repository';
 import { UserDocumentRepository } from 'src/database/repositories/user-document.repository';
 import { RagDocumentContextService } from './rag-document-context.service';
 import { RagIndexingService } from './rag-indexing.service';
+import { RagSearchExplanationService } from './rag-search-explanation.service';
 
-const DEFAULT_SEARCH_LIMIT = 10;
-const DEFAULT_RELATED_LIMIT = 6;
-const SEMANTIC_SCORE_THRESHOLD = 0.58;
-const FALLBACK_TRIGGER_THRESHOLD = 0.72;
-const SEMANTIC_STRONG_MATCH_THRESHOLD = 0.78;
-const SOURCE_SNIPPET_LENGTH = 280;
 const SEARCH_SUCCESS_MESSAGE = 'Documents searched successfully';
-const SEARCH_CONCEPT_LIMIT = 4;
-const SEARCH_CONCEPT_STOPWORDS = new Set([
-  'a',
-  'an',
-  'and',
-  'are',
-  'as',
-  'at',
-  'be',
-  'by',
-  'for',
-  'from',
-  'how',
-  'in',
-  'into',
-  'is',
-  'it',
-  'its',
-  'of',
-  'only',
-  'on',
-  'or',
-  'should',
-  'that',
-  'the',
-  'their',
-  'this',
-  'to',
-  'within',
-  'using',
-  'what',
-  'when',
-  'where',
-  'which',
-  'with',
-  'answer',
-  'answers',
-  'include',
-  'includes',
-  'including',
-  'inside',
-  'mention',
-  'mentioned',
-  'mentions',
-  'specific',
-]);
 const SEARCH_CONCEPT_GENERIC_WORDS = new Set([
   'chapter',
   'content',
@@ -89,8 +61,18 @@ const SEARCH_CONCEPT_GENERIC_WORDS = new Set([
 ]);
 const SEARCH_CONCEPT_PREFIX_PATTERN =
   /^(?:(?:this|the|a|an)\s+)?(?:lecture|document|paper|chapter|section|module|note|notes|study|article)\s+(?:covers|explains|describes|discusses|introduces|summarizes|focuses on|presents)\s+/i;
+const SEARCH_FILE_EXTENSION_PATTERN = /\b(?:pdf|docx?|txt|pptx?|ppt)\b/i;
+const SEARCH_FILENAME_PATTERN =
+  /(?:^|[\s\\/])[\p{L}\p{N} _.-]+\.[a-z0-9]{2,5}$/iu;
+const SEARCH_RANK_WEIGHTS: Record<SearchMatchType, number> = {
+  title: 1000,
+  section: 700,
+  content: 500,
+  meaning: 300,
+};
 
-type SearchMatchType = 'semantic' | 'keyword_fallback';
+type SearchQueryMode = 'lexical' | 'semantic' | 'hybrid';
+type SearchMatchType = 'title' | 'section' | 'content' | 'meaning';
 
 type ScopeResolution = {
   folder: Folder | null;
@@ -110,6 +92,24 @@ type RankedDocumentRow = {
   semanticScore: number;
 };
 
+type RankedSearchDocument = {
+  documentId: string;
+  score: number;
+  matchType: SearchMatchType;
+};
+
+type SearchQueryIntent = {
+  mode: SearchQueryMode;
+  normalizedQuery: string;
+  tokens: string[];
+  hasDigits: boolean;
+  hasSymbols: boolean;
+  looksLikeFileName: boolean;
+  looksLikeExtension: boolean;
+  isShort: boolean;
+  semanticTokenCount: number;
+};
+
 type DocumentMatchInsight = {
   documentId: string;
   snippet: string;
@@ -117,6 +117,25 @@ type DocumentMatchInsight = {
   sectionTitle: string | null;
   pageNumber: number | null;
   score: number | null;
+  matchType?: SearchMatchType;
+};
+
+type LexicalSearchRow = {
+  documentId: string;
+  documentName: string;
+  fileRef: string;
+  chunkText: string;
+  sectionTitle: string | null;
+  pageNumber: number | null;
+};
+
+type LexicalMatch = {
+  score: number;
+  matchType: Exclude<SearchMatchType, 'meaning'>;
+  snippet: string;
+  chunkText: string;
+  sectionTitle: string | null;
+  pageNumber: number | null;
 };
 
 type DocumentSummary = {
@@ -145,11 +164,15 @@ export type SearchResultDocument = DocumentSummary & {
   matchSnippet: string | null;
   matchSectionTitle: string | null;
   matchPageNumber: number | null;
+  matchLabel: string;
+  matchReason: string;
+  evidenceSnippet: string | null;
+  topics: string[];
 };
 
 export type SearchDocumentsResponse = {
   message: string;
-  mode: 'semantic';
+  mode: SearchQueryMode;
   total: number;
   currentPage: number;
   totalPages: number;
@@ -161,10 +184,10 @@ export type RelatedDocumentsResponse = {
   documents: SearchResultDocument[];
 };
 
-type RawRow = Record<string, unknown>;
-
 @Injectable()
 export class RagSearchService {
+  private readonly logger = new Logger(RagSearchService.name);
+
   constructor(
     private readonly dataSource: DataSource,
     private readonly geminiService: GeminiService,
@@ -173,6 +196,7 @@ export class RagSearchService {
     private readonly userDocumentRepository: UserDocumentRepository,
     private readonly ragDocumentContextService: RagDocumentContextService,
     private readonly ragIndexingService: RagIndexingService,
+    private readonly ragSearchExplanationService: RagSearchExplanationService,
   ) {}
 
   async searchDocuments(
@@ -195,61 +219,34 @@ export class RagSearchService {
     const scope = await this.resolveScope(ownerId, options.folderId);
     await this.ensureScopeIndexed(ownerId, scope);
 
-    const queryEmbedding =
-      await this.geminiService.createEmbedding(trimmedQuery);
-    const rankedSemanticResults = await this.getSemanticDocumentScores(
-      ownerId,
-      scope,
-      queryEmbedding,
+    const intent = this.analyzeSearchQuery(trimmedQuery);
+    const mode = intent.mode;
+    const [lexicalDocuments, semanticDocuments] = await Promise.all([
+      mode === 'semantic'
+        ? Promise.resolve([])
+        : this.getLexicalDocumentMatches(ownerId, scope, trimmedQuery, intent),
+      mode === 'lexical'
+        ? Promise.resolve([])
+        : this.getSemanticSearchDocuments(ownerId, scope, trimmedQuery),
+    ]);
+    const mergedDocuments = this.mergeSearchDocuments(
+      lexicalDocuments,
+      semanticDocuments,
     );
 
-    const semanticHits = rankedSemanticResults.reduce<
-      Array<{ documentId: string; score: number }>
-    >((accumulator, row) => {
-      if (row.semanticScore >= SEMANTIC_SCORE_THRESHOLD) {
-        accumulator.push({
-          documentId: row.documentId,
-          score: row.semanticScore,
-        });
-      }
-
-      return accumulator;
-    }, []);
-
-    const semanticInsightMap = await this.getSemanticDocumentInsights(
-      ownerId,
-      scope,
-      queryEmbedding,
-      semanticHits.map((document) => document.documentId),
+    const response = this.createSearchResponse(
+      mergedDocuments,
+      page,
+      limit,
+      mode,
     );
+    response.documents =
+      await this.ragSearchExplanationService.enrichSearchReasons(
+        response.documents,
+        trimmedQuery,
+      );
 
-    const rawSemanticDocuments = await this.getRankedDocumentSummaries(
-      ownerId,
-      semanticHits,
-      'semantic',
-      trimmedQuery,
-      semanticInsightMap,
-    );
-    const semanticDocuments = rawSemanticDocuments.filter((document) =>
-      this.shouldKeepSemanticResult(document, trimmedQuery),
-    );
-
-    const shouldAppendFallback =
-      semanticDocuments.length === 0 ||
-      (semanticDocuments[0]?.score ?? 0) < FALLBACK_TRIGGER_THRESHOLD;
-
-    const fallbackDocuments = shouldAppendFallback
-      ? await this.getKeywordFallbackDocuments(
-          ownerId,
-          scope,
-          trimmedQuery,
-          semanticDocuments.map((document) => document.id),
-        )
-      : [];
-
-    const mergedDocuments = [...semanticDocuments, ...fallbackDocuments];
-
-    return this.createSearchResponse(mergedDocuments, page, limit);
+    return response;
   }
 
   async getRelatedDocuments(
@@ -316,8 +313,8 @@ export class RagSearchService {
       rankedDocuments.map((row) => ({
         documentId: row.documentId,
         score: row.score,
+        matchType: 'meaning',
       })),
-      'semantic',
       '',
       new Map<string, DocumentMatchInsight>(),
     );
@@ -332,6 +329,7 @@ export class RagSearchService {
     documents: SearchResultDocument[],
     page: number,
     limit: number,
+    mode: SearchQueryMode = 'semantic',
   ): SearchDocumentsResponse {
     const total = documents.length;
     const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
@@ -339,12 +337,156 @@ export class RagSearchService {
 
     return {
       message: SEARCH_SUCCESS_MESSAGE,
-      mode: 'semantic',
+      mode,
       total,
       currentPage: page,
       totalPages,
       documents: documents.slice(startIndex, startIndex + limit),
     };
+  }
+
+  private analyzeSearchQuery(query: string): SearchQueryIntent {
+    const normalizedQuery = normalizeComparisonText(query);
+
+    if (!normalizedQuery) {
+      return {
+        mode: 'lexical',
+        normalizedQuery,
+        tokens: [],
+        hasDigits: false,
+        hasSymbols: false,
+        looksLikeFileName: false,
+        looksLikeExtension: false,
+        isShort: true,
+        semanticTokenCount: 0,
+      };
+    }
+
+    const tokens = this.extractComparisonTokens(query);
+    const semanticTokens = tokens.filter(
+      (token) =>
+        token.length >= 3 &&
+        !CONTEXT_SEARCH_STOPWORDS.has(token) &&
+        !SEARCH_CONCEPT_GENERIC_WORDS.has(token),
+    );
+    const hasDigits = /\d/.test(query);
+    const hasSymbols = /[._/#:[\](){}-]/.test(query);
+    const looksLikeFileName = SEARCH_FILENAME_PATTERN.test(query.trim());
+    const looksLikeExtension =
+      /^\.[a-z0-9]{2,6}$/i.test(query.trim()) ||
+      (tokens.length === 1 && SEARCH_FILE_EXTENSION_PATTERN.test(query));
+    const isShort = tokens.length <= 2 || normalizedQuery.length <= 4;
+    let mode: SearchQueryMode = 'hybrid';
+
+    if (
+      looksLikeFileName ||
+      looksLikeExtension ||
+      hasSymbols ||
+      hasDigits ||
+      isShort
+    ) {
+      mode = 'lexical';
+    } else if (semanticTokens.length >= 5) {
+      mode = 'semantic';
+    }
+
+    return {
+      mode,
+      normalizedQuery,
+      tokens,
+      hasDigits,
+      hasSymbols,
+      looksLikeFileName,
+      looksLikeExtension,
+      isShort,
+      semanticTokenCount: semanticTokens.length,
+    };
+  }
+
+  private async getSemanticSearchDocuments(
+    ownerId: string,
+    scope: ScopeResolution,
+    query: string,
+  ): Promise<SearchResultDocument[]> {
+    const queryEmbedding = await this.geminiService.createEmbedding(query);
+    const rankedSemanticResults = await this.getSemanticDocumentScores(
+      ownerId,
+      scope,
+      queryEmbedding,
+    );
+    const semanticHits = rankedSemanticResults.reduce<RankedSearchDocument[]>(
+      (accumulator, row) => {
+        if (row.semanticScore >= SEMANTIC_SCORE_THRESHOLD) {
+          accumulator.push({
+            documentId: row.documentId,
+            score: row.semanticScore,
+            matchType: 'meaning',
+          });
+        }
+
+        return accumulator;
+      },
+      [],
+    );
+    const semanticInsightMap = await this.getSemanticDocumentInsights(
+      ownerId,
+      scope,
+      queryEmbedding,
+      semanticHits.map((document) => document.documentId),
+    );
+    const rawSemanticDocuments = await this.getRankedDocumentSummaries(
+      ownerId,
+      semanticHits,
+      query,
+      semanticInsightMap,
+    );
+
+    return rawSemanticDocuments.filter((document) =>
+      this.shouldKeepSemanticResult(document, query),
+    );
+  }
+
+  private mergeSearchDocuments(
+    lexicalDocuments: SearchResultDocument[],
+    semanticDocuments: SearchResultDocument[],
+  ): SearchResultDocument[] {
+    const documentMap = new Map<string, SearchResultDocument>();
+
+    for (const document of [...lexicalDocuments, ...semanticDocuments]) {
+      const current = documentMap.get(document.id);
+
+      if (!current || this.compareSearchDocuments(document, current) < 0) {
+        documentMap.set(document.id, document);
+      }
+    }
+
+    return [...documentMap.values()].sort((left, right) =>
+      this.compareSearchDocuments(left, right),
+    );
+  }
+
+  private getSearchRank(document: SearchResultDocument): number {
+    return SEARCH_RANK_WEIGHTS[document.matchType] + (document.score ?? 0);
+  }
+
+  private compareSearchDocuments(
+    left: SearchResultDocument,
+    right: SearchResultDocument,
+  ): number {
+    const rankDifference = this.getSearchRank(right) - this.getSearchRank(left);
+
+    if (rankDifference !== 0) {
+      return rankDifference;
+    }
+
+    const leftUpdatedAt = this.getDocumentSortTime(left);
+    const rightUpdatedAt = this.getDocumentSortTime(right);
+
+    return rightUpdatedAt - leftUpdatedAt;
+  }
+
+  private getDocumentSortTime(document: SearchResultDocument): number {
+    return document.updatedAt?.getTime() ?? document.createdAt?.getTime() ?? 0;
   }
 
   private async getSemanticDocumentScores(
@@ -353,7 +495,7 @@ export class RagSearchService {
     embedding: number[],
     excludeDocumentId?: string,
   ): Promise<RankedDocumentRow[]> {
-    const embeddingSql = this.toVectorSql(embedding);
+    const embeddingSql = toVectorSql(embedding);
     const params: Array<string | number> = [embeddingSql, ownerId];
     const whereClauses = ['ud.user_id = $2', 'c.embedding IS NOT NULL'];
 
@@ -367,7 +509,8 @@ export class RagSearchService {
       whereClauses.push(`d.id <> $${params.length}`);
     }
 
-    const rows = await this.runRawQuery(
+    const rows = await runRawQuery(
+      this.dataSource,
       `
         SELECT
           d.id AS "documentId",
@@ -386,68 +529,261 @@ export class RagSearchService {
     return rows.map((row) => this.mapRankedDocumentRow(row));
   }
 
-  private async getKeywordFallbackDocuments(
+  private async getLexicalDocumentMatches(
     ownerId: string,
     scope: ScopeResolution,
     query: string,
-    excludedIds: string[],
+    intent: SearchQueryIntent = this.analyzeSearchQuery(query),
   ): Promise<SearchResultDocument[]> {
-    const searchTerm = `%${query}%`;
-    const repository = this.userDocumentRepository.getRepository();
-    const queryBuilder = repository
-      .createQueryBuilder('userDocument')
-      .leftJoinAndSelect('userDocument.document', 'document')
-      .leftJoinAndSelect('userDocument.folder', 'folder')
-      .leftJoin('userDocument.user', 'user')
-      .leftJoin('document.chunks', 'chunk')
-      .where('user.id = :ownerId', { ownerId })
-      .andWhere(
-        `
-          (
-            LOWER(COALESCE(userDocument.documentName, document.title, '')) LIKE LOWER(:searchTerm)
-            OR LOWER(chunk.chunkText) LIKE LOWER(:searchTerm)
-          )
-        `,
-        { searchTerm },
-      )
-      .distinct(true)
-      .orderBy('document.createdAt', 'DESC');
+    const params: unknown[] = [ownerId];
+    const whereClauses = ['ud.user_id = $1'];
+    const searchTerms = this.buildLexicalSearchTerms(query, intent);
 
     if (scope.scopedFolderId) {
-      queryBuilder.andWhere('folder.id = :folderId', {
-        folderId: scope.scopedFolderId,
-      });
+      params.push(scope.scopedFolderId);
+      whereClauses.push(`ud.folder_id = $${params.length}`);
     }
 
-    if (excludedIds.length > 0) {
-      queryBuilder.andWhere('document.id NOT IN (:...excludedIds)', {
-        excludedIds,
+    if (searchTerms.length > 0) {
+      const sourceClauses = searchTerms.map((searchTerm) => {
+        params.push(searchTerm);
+        const paramIndex = params.length;
+        return `
+          (
+            COALESCE(ud.document_name, d.title, '') ILIKE $${paramIndex}
+            OR COALESCE(d.file_ref, '') ILIKE $${paramIndex}
+            OR COALESCE(c.section_title, '') ILIKE $${paramIndex}
+            OR COALESCE(c.chunk_text, '') ILIKE $${paramIndex}
+          )
+        `;
       });
+      whereClauses.push(`(${sourceClauses.join(' OR ')})`);
     }
 
-    const rows = await queryBuilder.getMany();
-    const insightMap = await this.getKeywordFallbackInsights(
+    const rows = await runRawQuery(
+      this.dataSource,
+      `
+        SELECT
+          d.id AS "documentId",
+          COALESCE(ud.document_name, d.title, 'Untitled document') AS "documentName",
+          COALESCE(d.file_ref, '') AS "fileRef",
+          COALESCE(c.chunk_text, '') AS "chunkText",
+          c.section_title AS "sectionTitle",
+          c.page_number AS "pageNumber"
+        FROM user_documents ud
+        INNER JOIN document d ON d.id = ud.document_id
+        LEFT JOIN document_chunks dc ON dc.document_id = d.id
+        LEFT JOIN chunks c ON c.id = dc.chunk_id
+        WHERE ${whereClauses.join(' AND ')}
+        ORDER BY d.created_at DESC, c.chunk_index ASC
+      `,
+      params,
+    );
+    const bestMatches = new Map<string, LexicalMatch>();
+
+    for (const row of rows) {
+      const lexicalRow = this.mapLexicalSearchRow(row);
+      const match = this.resolveLexicalMatch(lexicalRow, query);
+
+      if (!match) {
+        continue;
+      }
+
+      const current = bestMatches.get(lexicalRow.documentId);
+
+      if (!current || match.score > current.score) {
+        bestMatches.set(lexicalRow.documentId, match);
+      }
+    }
+
+    const rankedDocuments = [...bestMatches.entries()]
+      .map(([documentId, match]) => ({
+        documentId,
+        score: match.score,
+        matchType: match.matchType,
+      }))
+      .sort((left, right) => right.score - left.score);
+    const insightMap = new Map<string, DocumentMatchInsight>(
+      [...bestMatches.entries()].map(([documentId, match]) => [
+        documentId,
+        {
+          documentId,
+          snippet: match.snippet,
+          chunkText: match.chunkText,
+          sectionTitle: match.sectionTitle,
+          pageNumber: match.pageNumber,
+          score: match.score,
+          matchType: match.matchType,
+        },
+      ]),
+    );
+
+    return this.getRankedDocumentSummaries(
       ownerId,
-      scope,
+      rankedDocuments,
       query,
-      rows.map((userDocument) => userDocument.document.id),
+      insightMap,
+    );
+  }
+
+  private buildLexicalSearchTerms(
+    query: string,
+    intent: SearchQueryIntent,
+  ): string[] {
+    const rawTerm = normalizeSearchText(query);
+    const terms = new Set<string>();
+
+    if (rawTerm) {
+      terms.add(`%${rawTerm}%`);
+    }
+
+    if (intent.looksLikeFileName) {
+      terms.add(`%${this.getFileName(rawTerm)}%`);
+    }
+
+    for (const token of intent.tokens.slice(0, 6)) {
+      if (token.length >= 2) {
+        terms.add(`%${token}%`);
+      }
+    }
+
+    return [...terms];
+  }
+
+  private resolveLexicalMatch(
+    row: LexicalSearchRow,
+    query: string,
+  ): LexicalMatch | null {
+    const normalizedQuery = normalizeComparisonText(query);
+
+    if (!normalizedQuery) {
+      return null;
+    }
+
+    const queryTokens = this.extractComparisonTokens(query);
+    const title = row.documentName;
+    const fileName = this.getFileName(row.fileRef);
+    const sectionTitle = row.sectionTitle ?? '';
+    const chunkText = normalizeSearchText(row.chunkText);
+    const titleMatch = this.getLexicalSourceMatch(
+      title,
+      normalizedQuery,
+      queryTokens,
+    );
+    const fileNameMatch = this.getLexicalSourceMatch(
+      fileName,
+      normalizedQuery,
+      queryTokens,
     );
 
-    return rows.map((userDocument) =>
-      this.buildSearchResultDocument(
-        this.toDocumentSummary(userDocument),
-        'keyword_fallback',
-        null,
-        query,
-        insightMap.get(userDocument.document.id),
-      ),
+    if (titleMatch === 'exact' || fileNameMatch === 'exact') {
+      return {
+        score: 1,
+        matchType: 'title',
+        snippet: title,
+        chunkText: '',
+        sectionTitle: null,
+        pageNumber: null,
+      };
+    }
+
+    if (titleMatch || fileNameMatch || this.isFileExtensionMatch(query, row)) {
+      return {
+        score: 0.94,
+        matchType: 'title',
+        snippet: title,
+        chunkText: '',
+        sectionTitle: null,
+        pageNumber: null,
+      };
+    }
+
+    if (
+      this.getLexicalSourceMatch(sectionTitle, normalizedQuery, queryTokens)
+    ) {
+      return {
+        score: 0.84,
+        matchType: 'section',
+        snippet: sectionTitle,
+        chunkText,
+        sectionTitle: row.sectionTitle,
+        pageNumber: row.pageNumber,
+      };
+    }
+
+    if (this.getLexicalSourceMatch(chunkText, normalizedQuery, queryTokens)) {
+      return {
+        score: 0.72,
+        matchType: 'content',
+        snippet: chunkText.slice(0, SOURCE_SNIPPET_LENGTH),
+        chunkText,
+        sectionTitle: row.sectionTitle,
+        pageNumber: row.pageNumber,
+      };
+    }
+
+    return null;
+  }
+
+  private getLexicalSourceMatch(
+    source: string,
+    normalizedQuery: string,
+    queryTokens: string[],
+  ): 'exact' | 'contains' | null {
+    const normalizedSource = normalizeComparisonText(source);
+
+    if (!normalizedSource) {
+      return null;
+    }
+
+    if (normalizedSource === normalizedQuery) {
+      return 'exact';
+    }
+
+    if (normalizedSource.includes(normalizedQuery)) {
+      return 'contains';
+    }
+
+    if (
+      queryTokens.length > 1 &&
+      queryTokens.every((token) => normalizedSource.includes(token))
+    ) {
+      return 'contains';
+    }
+
+    return null;
+  }
+
+  private isFileExtensionMatch(query: string, row: LexicalSearchRow): boolean {
+    const normalizedQuery = normalizeComparisonText(query);
+
+    if (!SEARCH_FILE_EXTENSION_PATTERN.test(normalizedQuery)) {
+      return false;
+    }
+
+    const extension = this.getFileName(row.fileRef || row.documentName)
+      .split('.')
+      .pop()
+      ?.toLowerCase();
+
+    return Boolean(
+      extension && normalizedQuery.split(/\s+/).includes(extension),
     );
+  }
+
+  private getFileName(value: string): string {
+    const normalizedValue = value.trim();
+
+    if (!normalizedValue) {
+      return '';
+    }
+
+    return normalizedValue.split(/[\\/]/).pop() || normalizedValue;
   }
 
   private async getRankedDocumentSummaries(
     ownerId: string,
-    rankedDocuments: Array<{ documentId: string; score: number }>,
-    matchType: SearchMatchType,
+    rankedDocuments: RankedSearchDocument[],
     query: string,
     insightMap: Map<string, DocumentMatchInsight>,
   ): Promise<SearchResultDocument[]> {
@@ -488,7 +824,7 @@ export class RagSearchService {
       summaries.push(
         this.buildSearchResultDocument(
           summary,
-          matchType,
+          document.matchType,
           scoreMap.get(document.documentId) ?? null,
           query,
           insightMap.get(document.documentId),
@@ -509,7 +845,7 @@ export class RagSearchService {
       return new Map();
     }
 
-    const embeddingSql = this.toVectorSql(embedding);
+    const embeddingSql = toVectorSql(embedding);
     const params: unknown[] = [embeddingSql, ownerId, documentIds];
     const whereClauses = [
       'ud.user_id = $2',
@@ -522,7 +858,8 @@ export class RagSearchService {
       whereClauses.push(`ud.folder_id = $${params.length}`);
     }
 
-    const rows = await this.runRawQuery(
+    const rows = await runRawQuery(
+      this.dataSource,
       `
         SELECT DISTINCT ON (d.id)
           d.id AS "documentId",
@@ -537,63 +874,6 @@ export class RagSearchService {
         INNER JOIN chunks c ON c.id = dc.chunk_id
         WHERE ${whereClauses.join(' AND ')}
         ORDER BY d.id, c.embedding <=> $1::vector ASC
-      `,
-      params,
-    );
-
-    return new Map(
-      rows.map((row) => {
-        const insight = this.mapDocumentMatchInsightRow(row);
-        return [insight.documentId, insight];
-      }),
-    );
-  }
-
-  private async getKeywordFallbackInsights(
-    ownerId: string,
-    scope: ScopeResolution,
-    query: string,
-    documentIds: string[],
-  ): Promise<Map<string, DocumentMatchInsight>> {
-    if (documentIds.length === 0) {
-      return new Map();
-    }
-
-    const searchTerm = `%${query}%`;
-    const params: unknown[] = [ownerId, documentIds, searchTerm, query];
-    const whereClauses = ['ud.user_id = $1', `d.id = ANY($2::uuid[])`];
-
-    if (scope.scopedFolderId) {
-      params.push(scope.scopedFolderId);
-      whereClauses.push(`ud.folder_id = $${params.length}`);
-    }
-
-    const rows = await this.runRawQuery(
-      `
-        SELECT DISTINCT ON (d.id)
-          d.id AS "documentId",
-          LEFT(COALESCE(c.chunk_text, ''), ${SOURCE_SNIPPET_LENGTH}) AS "snippet",
-          COALESCE(c.chunk_text, '') AS "chunkText",
-          c.section_title AS "sectionTitle",
-          c.page_number AS "pageNumber",
-          NULL AS "score"
-        FROM user_documents ud
-        INNER JOIN document d ON d.id = ud.document_id
-        LEFT JOIN document_chunks dc ON dc.document_id = d.id
-        LEFT JOIN chunks c ON c.id = dc.chunk_id
-        WHERE ${whereClauses.join(' AND ')}
-        ORDER BY
-          d.id,
-          CASE
-            WHEN LOWER(COALESCE(c.chunk_text, '')) LIKE LOWER($3) THEN 0
-            ELSE 1
-          END ASC,
-          CASE
-            WHEN LOWER(COALESCE(c.chunk_text, '')) LIKE LOWER($3)
-              THEN POSITION(LOWER($4) IN LOWER(COALESCE(c.chunk_text, '')))
-            ELSE 2147483647
-          END ASC,
-          c.chunk_index ASC
       `,
       params,
     );
@@ -633,7 +913,8 @@ export class RagSearchService {
       whereClauses.push(`ud.folder_id = $${params.length}`);
     }
 
-    const rows = await this.runRawQuery(
+    const rows = await runRawQuery(
+      this.dataSource,
       `
         SELECT
           d.id AS "documentId",
@@ -676,8 +957,8 @@ export class RagSearchService {
 
     return {
       folder,
-      scopedFolderId: folder.parentId ? folder.id : null,
-      isWorkspaceScope: !folder.parentId,
+      scopedFolderId: folder.id,
+      isWorkspaceScope: false,
     };
   }
 
@@ -702,7 +983,10 @@ export class RagSearchService {
 
     try {
       rawVector = pgvector.fromSql(embedding) as unknown;
-    } catch {
+    } catch (error) {
+      this.logger.warn(
+        `pgvector.fromSql failed to parse embedding: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return [];
     }
 
@@ -743,9 +1027,7 @@ export class RagSearchService {
       contentHash: userDocument.document?.contentHash ?? null,
       status: userDocument.document?.status ?? 'pending',
       isFavorite: userDocument.isFavorite,
-      formattedFileSize: this.formatFileSize(
-        userDocument.document?.fileSize || 0,
-      ),
+      formattedFileSize: formatFileSize(userDocument.document?.fileSize || 0),
       folderId: userDocument.folder?.id || null,
       folderName: userDocument.folder?.name || 'Workspace',
     };
@@ -758,15 +1040,25 @@ export class RagSearchService {
     query: string,
     insight?: DocumentMatchInsight,
   ): SearchResultDocument {
+    const evidenceSnippet = this.resolveMatchSnippet(insight);
+    const topics = this.extractMatchedConcepts(summary, query, insight);
+    const matchLabel = this.buildMatchLabel(matchType);
+
     return {
       ...summary,
       matchType,
       score: score === null ? null : Number(score.toFixed(4)),
-      relevanceLabel: this.buildRelevanceLabel(matchType, score),
-      matchedConcepts: this.extractMatchedConcepts(summary, query, insight),
-      matchSnippet: this.resolveMatchSnippet(insight),
+      relevanceLabel: this.buildRelevanceLabel(matchType),
+      matchedConcepts: topics,
+      matchSnippet: evidenceSnippet,
       matchSectionTitle: insight?.sectionTitle ?? null,
       matchPageNumber: insight?.pageNumber ?? null,
+      matchLabel,
+      matchReason: this.ragSearchExplanationService.buildFallbackReason({
+        matchType,
+      }),
+      evidenceSnippet,
+      topics,
     };
   }
 
@@ -774,7 +1066,7 @@ export class RagSearchService {
     document: SearchResultDocument,
     query: string,
   ): boolean {
-    if (document.matchType !== 'semantic') {
+    if (document.matchType !== 'meaning') {
       return true;
     }
 
@@ -791,7 +1083,7 @@ export class RagSearchService {
     document: SearchResultDocument,
     query: string,
   ): boolean {
-    const normalizedQuery = this.normalizeComparisonText(query);
+    const normalizedQuery = normalizeComparisonText(query);
 
     if (!normalizedQuery) {
       return true;
@@ -812,7 +1104,7 @@ export class RagSearchService {
       queryTokens.length === 1 ? 1 : Math.min(queryTokens.length, 2);
 
     for (const source of sources) {
-      const normalizedSource = this.normalizeComparisonText(source ?? '');
+      const normalizedSource = normalizeComparisonText(source ?? '');
 
       if (!normalizedSource) {
         continue;
@@ -838,87 +1130,71 @@ export class RagSearchService {
     return false;
   }
 
-  private buildRelevanceLabel(
-    matchType: SearchMatchType,
-    score: number | null,
-  ): string {
-    if (matchType === 'keyword_fallback') {
-      return 'Keyword match';
+  private buildRelevanceLabel(matchType: SearchMatchType): string {
+    if (matchType !== 'meaning') {
+      return this.buildMatchLabel(matchType);
     }
 
-    if (score === null) {
-      return 'Semantic match';
-    }
-
-    if (score >= 0.86) {
-      return 'Very relevant';
-    }
-
-    if (score >= FALLBACK_TRIGGER_THRESHOLD) {
-      return 'Relevant';
-    }
-
-    return 'Related';
+    return 'Meaning match';
   }
 
-  private formatFileSize(bytes: number): string {
-    if (bytes === 0) {
-      return '0 Bytes';
+  private buildMatchLabel(matchType: SearchMatchType): string {
+    if (matchType === 'title') {
+      return 'Title match';
     }
 
-    const units = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const sizeIndex = Math.floor(Math.log(bytes) / Math.log(1024));
-
-    return `${parseFloat((bytes / 1024 ** sizeIndex).toFixed(2))} ${units[sizeIndex]}`;
-  }
-
-  private toVectorSql(embedding: number[]): string {
-    return pgvector.toSql(embedding) as string;
-  }
-
-  private async runRawQuery(sql: string, params: unknown[]): Promise<RawRow[]> {
-    const result = (await this.dataSource.query(sql, params)) as unknown;
-
-    if (!Array.isArray(result)) {
-      return [];
+    if (matchType === 'section') {
+      return 'Section match';
     }
 
-    return result.filter((row) => this.isRawRow(row));
-  }
+    if (matchType === 'content') {
+      return 'Content match';
+    }
 
-  private isRawRow(value: unknown): value is RawRow {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
+    return 'Meaning match';
   }
 
   private mapRankedDocumentRow(row: RawRow): RankedDocumentRow {
     return {
-      documentId: this.readRequiredString(row, 'documentId'),
-      semanticScore: this.readNumber(row, 'semanticScore'),
+      documentId: readRequiredString(row, 'documentId'),
+      semanticScore: readNumber(row, 'semanticScore'),
     };
   }
 
   private mapChunkProgressRow(row: RawRow): ChunkProgressRow {
     return {
-      documentId: this.readRequiredString(row, 'documentId'),
-      documentName: this.readString(row, 'documentName', 'Untitled document'),
-      totalChunks: this.readNumber(row, 'totalChunks'),
-      embeddedChunks: this.readNumber(row, 'embeddedChunks'),
+      documentId: readRequiredString(row, 'documentId'),
+      documentName: readString(row, 'documentName', 'Untitled document'),
+      totalChunks: readNumber(row, 'totalChunks'),
+      embeddedChunks: readNumber(row, 'embeddedChunks'),
     };
   }
 
   private mapDocumentMatchInsightRow(row: RawRow): DocumentMatchInsight {
     return {
-      documentId: this.readRequiredString(row, 'documentId'),
-      snippet: this.readString(row, 'snippet'),
-      chunkText: this.readString(row, 'chunkText'),
-      sectionTitle: this.readNullableString(row, 'sectionTitle'),
-      pageNumber: this.readNullableNumber(row, 'pageNumber'),
-      score: this.readNullableNumber(row, 'score'),
+      documentId: readRequiredString(row, 'documentId'),
+      snippet: readString(row, 'snippet'),
+      chunkText: readString(row, 'chunkText'),
+      sectionTitle: readNullableString(row, 'sectionTitle'),
+      pageNumber: readNullableNumber(row, 'pageNumber'),
+      score: readNullableNumber(row, 'score'),
+      matchType: 'meaning',
+    };
+  }
+
+  private mapLexicalSearchRow(row: RawRow): LexicalSearchRow {
+    return {
+      documentId: readRequiredString(row, 'documentId'),
+      documentName: readString(row, 'documentName', 'Untitled document'),
+      fileRef: readString(row, 'fileRef'),
+      chunkText: readString(row, 'chunkText'),
+      sectionTitle: readNullableString(row, 'sectionTitle'),
+      pageNumber: readNullableNumber(row, 'pageNumber'),
     };
   }
 
   private resolveMatchSnippet(insight?: DocumentMatchInsight): string | null {
-    const snippet = this.normalizeSearchText(
+    const snippet = normalizeSearchText(
       insight?.snippet || insight?.chunkText || '',
     );
 
@@ -967,14 +1243,6 @@ export class RagSearchService {
     pushCandidate(summary.metadata?.methodology ?? null, 78);
     pushCandidate(insight?.sectionTitle ?? null, 86);
 
-    const sourceText = this.normalizeSearchText(
-      insight?.chunkText || insight?.snippet || '',
-    );
-
-    for (const candidate of this.extractTextConceptCandidates(sourceText)) {
-      pushCandidate(candidate, 56);
-    }
-
     const rankedConcepts = [...conceptScores.entries()]
       .sort((left, right) => right[1] - left[1])
       .slice(0, SEARCH_CONCEPT_LIMIT)
@@ -987,57 +1255,8 @@ export class RagSearchService {
     return [];
   }
 
-  private extractTextConceptCandidates(text: string): string[] {
-    if (!text) {
-      return [];
-    }
-
-    const directCandidates = text
-      .split(/[.!?]/)
-      .slice(0, 3)
-      .flatMap((sentence) => sentence.split(/[,:;()]/))
-      .flatMap((segment) =>
-        segment.split(
-          /\b(?:and|or|including|such as|with|about|covering|focused on|focuses on)\b/i,
-        ),
-      )
-      .map((segment) => this.cleanConceptPhrase(segment))
-      .filter((segment): segment is string => Boolean(segment));
-
-    if (directCandidates.length >= SEARCH_CONCEPT_LIMIT) {
-      return directCandidates;
-    }
-
-    const tokenCandidates: string[] = [];
-    const tokens = this.normalizeSearchText(text)
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(Boolean);
-
-    for (let index = 0; index < tokens.length; index += 1) {
-      for (let size = 2; size <= 4; size += 1) {
-        const slice = tokens.slice(index, index + size);
-
-        if (slice.length !== size) {
-          continue;
-        }
-
-        if (
-          SEARCH_CONCEPT_STOPWORDS.has(slice[0]) ||
-          SEARCH_CONCEPT_STOPWORDS.has(slice[slice.length - 1])
-        ) {
-          continue;
-        }
-
-        tokenCandidates.push(slice.join(' '));
-      }
-    }
-
-    return [...directCandidates, ...tokenCandidates];
-  }
-
   private cleanConceptPhrase(value: string | null | undefined): string | null {
-    const normalizedValue = this.normalizeSearchText(value ?? '');
+    const normalizedValue = normalizeSearchText(value ?? '');
 
     if (!normalizedValue) {
       return null;
@@ -1053,7 +1272,7 @@ export class RagSearchService {
 
     while (
       words.length > 0 &&
-      (SEARCH_CONCEPT_STOPWORDS.has(words[0]) ||
+      (CONTEXT_SEARCH_STOPWORDS.has(words[0]) ||
         SEARCH_CONCEPT_GENERIC_WORDS.has(words[0]))
     ) {
       words.shift();
@@ -1061,7 +1280,7 @@ export class RagSearchService {
 
     while (
       words.length > 0 &&
-      (SEARCH_CONCEPT_STOPWORDS.has(words[words.length - 1]) ||
+      (CONTEXT_SEARCH_STOPWORDS.has(words[words.length - 1]) ||
         SEARCH_CONCEPT_GENERIC_WORDS.has(words[words.length - 1]))
     ) {
       words.pop();
@@ -1076,7 +1295,7 @@ export class RagSearchService {
     if (
       limitedWords.every(
         (word) =>
-          SEARCH_CONCEPT_STOPWORDS.has(word) ||
+          CONTEXT_SEARCH_STOPWORDS.has(word) ||
           SEARCH_CONCEPT_GENERIC_WORDS.has(word),
       )
     ) {
@@ -1171,13 +1390,13 @@ export class RagSearchService {
 
   private extractMeaningfulTokens(text: string): Set<string> {
     return new Set(
-      this.normalizeSearchText(text)
+      normalizeSearchText(text)
         .toLowerCase()
         .split(/\s+/)
         .filter(
           (token) =>
             token.length > 2 &&
-            !SEARCH_CONCEPT_STOPWORDS.has(token) &&
+            !CONTEXT_SEARCH_STOPWORDS.has(token) &&
             !SEARCH_CONCEPT_GENERIC_WORDS.has(token),
         ),
     );
@@ -1193,111 +1412,9 @@ export class RagSearchService {
       .reduce((count, token) => count + (queryTokens.has(token) ? 1 : 0), 0);
   }
 
-  private normalizeSearchText(value: string): string {
-    return value
-      .replace(/\s+/g, ' ')
-      .replace(/[^\S\r\n]+/g, ' ')
-      .trim();
-  }
-
-  private normalizeComparisonText(value: string): string {
-    return this.normalizeSearchText(value)
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/đ/g, 'd')
-      .replace(/Đ/g, 'D')
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
   private extractComparisonTokens(value: string): string[] {
-    return this.normalizeComparisonText(value)
+    return normalizeComparisonText(value)
       .split(/\s+/)
       .filter((token) => token.length >= 2);
-  }
-
-  private readRequiredString(row: RawRow, key: string): string {
-    const value = row[key];
-
-    if (typeof value === 'string' && value.trim()) {
-      return value;
-    }
-
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return String(value);
-    }
-
-    throw new Error(`Expected string value for ${key}`);
-  }
-
-  private readString(row: RawRow, key: string, fallback = ''): string {
-    const value = row[key];
-
-    if (typeof value === 'string') {
-      return value;
-    }
-
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return String(value);
-    }
-
-    return fallback;
-  }
-
-  private readNullableString(row: RawRow, key: string): string | null {
-    const value = row[key];
-
-    if (typeof value === 'string') {
-      const trimmedValue = value.trim();
-      return trimmedValue ? trimmedValue : null;
-    }
-
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return String(value);
-    }
-
-    return null;
-  }
-
-  private readNumber(row: RawRow, key: string, fallback = 0): number {
-    const value = row[key];
-
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-
-    if (typeof value === 'string') {
-      const parsed = Number(value);
-
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-
-    return fallback;
-  }
-
-  private readNullableNumber(row: RawRow, key: string): number | null {
-    const value = row[key];
-
-    if (value === null || value === undefined) {
-      return null;
-    }
-
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-
-    if (typeof value === 'string') {
-      const parsed = Number(value);
-
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-
-    return null;
   }
 }

@@ -13,6 +13,8 @@ import { ChunkRepository } from 'src/database/repositories/chunks.repository';
 import { UserDocumentRepository } from 'src/database/repositories/user-document.repository';
 import { FolderRepository } from 'src/database/repositories/folder.repository';
 import { repairMojibakeText } from 'src/common/utils/text-encoding';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import type { DocumentUploadedEvent } from 'src/modules/rag/services/rag-indexing-queue.service';
 
 import { DataSource, IsNull } from 'typeorm';
 
@@ -75,7 +77,9 @@ type UpdateDocumentNoteInput = {
 @Injectable()
 export class DocumentService {
   private readonly logger = new Logger(DocumentService.name);
-  private readonly uploadsDirectory = path.resolve(process.cwd(), 'uploads');
+  private readonly uploadsDirectory = path.resolve(
+    process.env.UPLOADS_DIR || 'uploads',
+  );
 
   constructor(
     private readonly documentRepository: DocumentRepository,
@@ -83,6 +87,7 @@ export class DocumentService {
     private readonly userDocumentRepository: UserDocumentRepository,
     private readonly folderRepository: FolderRepository,
     private readonly dataSource: DataSource,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -340,6 +345,12 @@ export class DocumentService {
         documentName: dto.title || file.originalname,
         isFavorite: false,
       });
+
+      // Trigger background embedding — fire-and-forget, user gets response immediately
+      const uploadedEvent: DocumentUploadedEvent = {
+        documentId: createdDoc.id,
+      };
+      this.eventEmitter.emit('document.uploaded', uploadedEvent);
 
       return {
         id: createdDoc.id,
@@ -955,12 +966,15 @@ export class DocumentService {
       (note) => note.id !== normalizedNoteId,
     );
     const nextNotes =
-      remainingNotes.length > 0 ? remainingNotes : [this.createEmptyStudyNote()];
+      remainingNotes.length > 0
+        ? remainingNotes
+        : [this.createEmptyStudyNote()];
     const activeNote =
       currentCollection.activeNoteId === normalizedNoteId
         ? nextNotes[0]
-        : nextNotes.find((note) => note.id === currentCollection.activeNoteId) ||
-          nextNotes[0];
+        : nextNotes.find(
+            (note) => note.id === currentCollection.activeNoteId,
+          ) || nextNotes[0];
     const nextExtraAttributes = {
       ...baseExtraAttributes,
       sksNotes: {
@@ -1073,7 +1087,7 @@ export class DocumentService {
       !Array.isArray(extraAttributes)
         ? extraAttributes
         : {};
-    const rawCollection = safeAttributes.sksNotes;
+    const rawCollection = (safeAttributes as Record<string, unknown>).sksNotes;
     const notes =
       rawCollection &&
       typeof rawCollection === 'object' &&
@@ -1087,8 +1101,7 @@ export class DocumentService {
     if (notes.length > 0) {
       const requestedActiveId =
         typeof (rawCollection as Record<string, unknown>).activeNoteId ===
-          'string' &&
-        (rawCollection as Record<string, unknown>).activeNoteId
+          'string' && (rawCollection as Record<string, unknown>).activeNoteId
           ? ((rawCollection as Record<string, unknown>).activeNoteId as string)
           : notes[0].id;
       const activeNote =
@@ -1196,7 +1209,7 @@ export class DocumentService {
       extraAttributes &&
       typeof extraAttributes === 'object' &&
       !Array.isArray(extraAttributes)
-        ? extraAttributes.sksNote
+        ? (extraAttributes as Record<string, unknown>).sksNote
         : null;
 
     if (!rawNote || typeof rawNote !== 'object' || Array.isArray(rawNote)) {

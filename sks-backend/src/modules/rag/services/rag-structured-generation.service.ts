@@ -1,13 +1,17 @@
-import { Injectable, LoggerService } from '@nestjs/common';
+import { Inject, Injectable, LoggerService } from '@nestjs/common';
 import { PromptTemplate } from '@langchain/core/prompts';
-import { ChatGoogleParams } from '@langchain/google';
 import {
-  GeminiService,
+  LLM_GENERATION_SERVICE,
   type GenerateTextOptions,
-} from 'src/common/llm/gemini.service';
+  type LlmGenerationService,
+} from 'src/common/llm/llm-generation.types';
 
-type StructuredModelOptions = Omit<Partial<ChatGoogleParams>, 'apiKey'> &
-  GenerateTextOptions;
+type StructuredModelOptions = GenerateTextOptions;
+
+type StructuredGenerationPolicy =
+  | 'schema_first'
+  | 'function_first'
+  | 'raw_json_only';
 
 type StructuredGenerationOptions<TResult> = {
   input: Record<string, string>;
@@ -16,107 +20,75 @@ type StructuredGenerationOptions<TResult> = {
   outputSchema: object;
   schemaName: string;
   operationLabel: string;
-  skipJsonSchema?: boolean;
-  skipFunctionCalling?: boolean;
+  policy?: StructuredGenerationPolicy;
   modelOptions?: StructuredModelOptions;
   coerce: (value: unknown) => TResult | null;
   parseRawResponse: (rawResponse: string) => TResult;
   logger?: LoggerService;
 };
 
+type StructuredGenerationAttempt =
+  | 'json_schema'
+  | 'function_calling'
+  | 'raw_json';
+
 @Injectable()
 export class RagStructuredGenerationService {
-  constructor(private readonly geminiService: GeminiService) {}
+  constructor(
+    @Inject(LLM_GENERATION_SERVICE)
+    private readonly generationService: LlmGenerationService,
+  ) {}
 
-  async generate<TResult>({
-    input,
-    prompt,
-    fallbackPrompt,
-    outputSchema,
-    schemaName,
-    operationLabel,
-    skipJsonSchema,
-    skipFunctionCalling,
-    modelOptions,
-    coerce,
-    parseRawResponse,
-    logger,
-  }: StructuredGenerationOptions<TResult>): Promise<TResult> {
-    const baseModel = this.geminiService.createChatModel(modelOptions);
+  async generate<TResult>(
+    options: StructuredGenerationOptions<TResult>,
+  ): Promise<TResult> {
+    const attempts = this.resolveAttempts(options.policy ?? 'schema_first');
 
-    if (!skipJsonSchema) {
-      try {
-        const structuredPayload = coerce(
-          await prompt
-            .pipe(
-              baseModel.withStructuredOutput(outputSchema, {
-                method: 'jsonSchema',
-              }),
-            )
-            .invoke(input),
+    for (const attempt of attempts) {
+      if (attempt === 'json_schema') {
+        options.logger?.warn(
+          `${options.operationLabel} skipped JSON schema because the configured LLM generation provider does not expose structured output. Falling back to raw JSON.`,
         );
 
-        if (structuredPayload) {
-          return structuredPayload;
-        }
-
-        logger?.warn(
-          `${operationLabel} with JSON schema returned an empty structured payload. Falling back to function calling.`,
-        );
-      } catch (jsonSchemaError) {
-        logger?.warn(
-          `${operationLabel} fell back to function calling: ${this.toErrorMessage(
-            jsonSchemaError,
-          )}`,
-        );
+        continue;
       }
-    }
 
-    if (!skipFunctionCalling) {
-      try {
-        const structuredPayload = coerce(
-          await prompt
-            .pipe(
-              baseModel.withStructuredOutput(outputSchema, {
-                method: 'functionCalling',
-                name: schemaName,
-              }),
-            )
-            .invoke(input),
+      if (attempt === 'function_calling') {
+        options.logger?.warn(
+          `${options.operationLabel} skipped function calling for schema "${options.schemaName}" because the configured LLM generation provider does not expose structured output. Falling back to raw JSON.`,
         );
 
-        if (structuredPayload) {
-          return structuredPayload;
-        }
-
-        logger?.warn(
-          `${operationLabel} with function calling returned an empty structured payload. Falling back to raw Gemini JSON mode.`,
-        );
-      } catch (functionCallingError) {
-        logger?.warn(
-          `${operationLabel} fell back to raw Gemini JSON mode: ${this.toErrorMessage(
-            functionCallingError,
-          )}`,
-        );
+        continue;
       }
-    }
 
-    const rawPrompt = await fallbackPrompt.format(input);
-    const rawResponse = await this.geminiService.generateText(
-      rawPrompt,
-      {
-        ...modelOptions,
+      const rawPrompt = await options.fallbackPrompt.format(options.input);
+      const rawResponse = await this.generationService.generateText(rawPrompt, {
+        ...options.modelOptions,
         responseMimeType: 'application/json',
-      },
+      });
+      return options.parseRawResponse(rawResponse);
+    }
+
+    throw new Error(
+      `${options.operationLabel} has no structured generation attempts.`,
     );
-    return parseRawResponse(rawResponse);
   }
 
-  private toErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
+  private resolveAttempts(
+    policy: StructuredGenerationPolicy,
+  ): StructuredGenerationAttempt[] {
+    if (!this.generationService.supportsStructuredOutput?.()) {
+      return ['raw_json'];
     }
 
-    return String(error);
+    if (policy === 'raw_json_only') {
+      return ['raw_json'];
+    }
+
+    if (policy === 'function_first') {
+      return ['function_calling', 'json_schema', 'raw_json'];
+    }
+
+    return ['json_schema', 'function_calling', 'raw_json'];
   }
 }

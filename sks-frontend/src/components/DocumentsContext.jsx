@@ -97,21 +97,26 @@ export const DocumentsProvider = ({ children }) => {
     }
   }, []);
 
-  const loadDocuments = useCallback(async (folderId, page = 1) => {
+  const loadDocuments = useCallback(async (folderId, page = 1, options = {}) => {
     const requestId = documentsRequestRef.current + 1;
     documentsRequestRef.current = requestId;
+    const silent = options.silent ?? false;
 
     if (!folderId) {
       setDocuments([]);
       setTotal(0);
       setCurrentPage(1);
       setTotalPages(1);
-      setDocumentsLoading(false);
+      if (!silent) {
+        setDocumentsLoading(false);
+      }
       return;
     }
 
     try {
-      setDocumentsLoading(true);
+      if (!silent) {
+        setDocumentsLoading(true);
+      }
       const result = await getDocumentsByFolder(folderId, page, ITEMS_PER_PAGE);
 
       if (requestId !== documentsRequestRef.current) {
@@ -134,7 +139,7 @@ export const DocumentsProvider = ({ children }) => {
       setTotalPages(1);
       setError(err.response?.data?.message || 'Failed to load documents.');
     } finally {
-      if (requestId === documentsRequestRef.current) {
+      if (requestId === documentsRequestRef.current && !silent) {
         setDocumentsLoading(false);
       }
     }
@@ -160,8 +165,8 @@ export const DocumentsProvider = ({ children }) => {
   );
 
   const refreshDocuments = useCallback(
-    async (page = currentPage) => {
-      await loadDocuments(activeFolderId, page);
+    async (page = currentPage, options = {}) => {
+      await loadDocuments(activeFolderId, page, options);
     },
     [activeFolderId, currentPage, loadDocuments],
   );

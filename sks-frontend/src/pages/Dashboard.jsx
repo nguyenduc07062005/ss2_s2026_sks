@@ -25,11 +25,8 @@ import {
 } from '../utils/recentDocuments.js';
 import {
   buildPaginationItems,
-  buildSearchLocationText,
-  buildSearchMatchTypeLabel,
   buildSearchRelevanceLabel,
   buildSearchSnippetText,
-  buildSearchTopicText,
   findFolderById,
   findFolderTrail,
   FOLDER_ACCENTS,
@@ -119,6 +116,22 @@ const StarIcon = ({ className = 'h-5 w-5', filled = false }) => (
     <path d="M10 2.75 12.163 7.133l4.836.703-3.5 3.412.826 4.817L10 13.79l-4.325 2.275.826-4.817-3.5-3.412 4.836-.703L10 2.75Z" />
   </svg>
 );
+
+const DOCUMENT_AI_PENDING_STATUSES = new Set(['pending', 'processed', 'indexing']);
+
+const getDocumentAiStatusLabel = (status) => {
+  if (status === 'indexing') {
+    return 'AI indexing';
+  }
+
+  if (status === 'pending' || status === 'processed') {
+    return 'AI pending';
+  }
+
+  return '';
+};
+
+const shouldPollDocumentAiStatus = (document) => document?.status === 'indexing';
 
 const CloseIcon = ({ className = 'h-5 w-5' }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={className}>
@@ -316,12 +329,11 @@ const DocumentRow = ({
 }) => {
   const fileType = getDocumentType(document);
   const hasSearchDetails = !compact && Boolean(searchQuery);
-  const searchTopicText = buildSearchTopicText(document, searchQuery);
   const searchSnippetText = buildSearchSnippetText(document);
-  const searchLocationText = buildSearchLocationText(document);
   const searchRelevanceLabel = buildSearchRelevanceLabel(document);
-  const searchMatchTypeLabel = buildSearchMatchTypeLabel(document);
-  const hasSearchBadges = Boolean(searchRelevanceLabel || searchMatchTypeLabel);
+  const aiStatusLabel = DOCUMENT_AI_PENDING_STATUSES.has(document?.status)
+    ? getDocumentAiStatusLabel(document.status)
+    : '';
 
   const finalFileTypeTone = fileType.tone.replace('bg-teal-50', 'bg-gradient-to-br from-cyan-500 to-blue-500 shadow border-transparent').replace('text-teal-700', 'text-white');
 
@@ -349,6 +361,15 @@ const DocumentRow = ({
               >
                 <StarIcon className="h-4 w-4" filled={document.isFavorite} />
               </button>
+              {aiStatusLabel ? (
+                <span
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-cyan-700 ring-1 ring-cyan-100"
+                  title="AI features are preparing for this document"
+                >
+                  <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent" />
+                  {aiStatusLabel}
+                </span>
+              ) : null}
             </div>
             {badgeLabel ? (
               <div className="mt-1">
@@ -359,41 +380,17 @@ const DocumentRow = ({
             ) : null}
             {hasSearchDetails ? (
               <div className="mt-1.5 space-y-2">
-                {hasSearchBadges ? (
+                {searchRelevanceLabel ? (
                   <div className="flex flex-wrap items-center gap-2">
-                    {searchRelevanceLabel ? (
-                      <span className="inline-flex items-center rounded-md bg-sks-slate-900 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
-                        {searchRelevanceLabel}
-                      </span>
-                    ) : null}
-                    {searchMatchTypeLabel ? (
-                      <span
-                        className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                          document.matchType === 'semantic'
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-amber-50 text-amber-700'
-                        }`}
-                      >
-                        {searchMatchTypeLabel}
-                      </span>
-                    ) : null}
+                    <span className="inline-flex items-center rounded-md bg-sks-slate-900 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                      {searchRelevanceLabel}
+                    </span>
                   </div>
                 ) : null}
                 {searchSnippetText ? (
                   <p className="text-sm leading-relaxed text-sks-slate-500">
                     <span className="font-semibold text-sks-slate-700">Why this matches:</span>{' '}
                     {searchSnippetText}
-                  </p>
-                ) : null}
-                {searchTopicText ? (
-                  <p className="text-sm leading-relaxed text-sks-slate-500">
-                    <span className="font-semibold text-sks-slate-700">Topics:</span>{' '}
-                    {searchTopicText}
-                  </p>
-                ) : null}
-                {searchLocationText ? (
-                  <p className="text-[12px] font-medium text-sks-slate-400">
-                    {searchLocationText}
                   </p>
                 ) : null}
               </div>
@@ -905,6 +902,23 @@ const Dashboard = () => {
     ],
   );
 
+  const hasActiveIndexingDocuments = useMemo(
+    () => documents.some((document) => shouldPollDocumentAiStatus(document)),
+    [documents],
+  );
+
+  useEffect(() => {
+    if (!hasActiveIndexingDocuments) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshDocuments(currentPage, { silent: true });
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, [currentPage, hasActiveIndexingDocuments, refreshDocuments]);
+
   const handlePreviewFolder = useCallback(
     (folderId) => {
       void loadFolderPreview(folderId, 1);
@@ -952,7 +966,12 @@ const Dashboard = () => {
 
   const handleUpload = async (file, title, folderId) => {
     await uploadDocument(file, title, folderId || selectedFolderId || rootFolder?.id);
-    await syncWorkspace({ documentsPage: 1, previewPage: 1 });
+    void syncWorkspace({ documentsPage: 1, previewPage: 1 }).catch((requestError) => {
+      setError(
+        requestError.response?.data?.message ||
+          'Document uploaded, but the workspace could not refresh automatically.',
+      );
+    });
   };
 
   const handleToggleFavorite = async (documentId) => {
@@ -1236,120 +1255,114 @@ const Dashboard = () => {
 
   return (
     <>
-      <div className="mx-auto max-w-[1440px] animate-fade-in pb-12">
-        {/* ═══ PREMIUM HERO HEADER ═══ */}
-        <div className="relative mb-10 overflow-hidden rounded-[32px] border border-cyan-100/80 bg-[linear-gradient(135deg,#ffffff_0%,#f8fdff_44%,#eefbff_100%)] px-8 py-8 shadow-[0_24px_80px_-42px_rgba(15,23,42,0.28)]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/80 to-transparent" />
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,rgba(14,165,233,0.06)_48%,rgba(16,185,129,0.08)_100%)]" />
-          <div className="pointer-events-none absolute inset-x-8 bottom-0 h-20 bg-gradient-to-t from-cyan-100/50 to-transparent" />
+      <div className="animate-fade-in pb-16">
 
-          {/* Breadcrumb inside banner */}
+        {/* ══════════════════════════════════════════════════════ */}
+        {/* PREMIUM HERO — dark gradient, animated glows, crisp    */}
+        {/* ══════════════════════════════════════════════════════ */}
+        {/* ═══ LIGHT PREMIUM HERO ═══ */}
+        <div className="relative mb-8 overflow-hidden rounded-[28px] border border-cyan-100 bg-gradient-to-br from-white via-cyan-50/60 to-blue-50 px-8 py-8 shadow-[0_8px_40px_-12px_rgba(14,165,233,0.25)]">
+          {/* Top accent line */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent" />
+          {/* Decorative circles */}
+          <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-12 right-32 h-48 w-48 rounded-full bg-blue-400/10 blur-2xl" />
+
+          {/* Breadcrumb */}
           {folderTrail.length > 1 ? (
-            <nav className="mb-4 flex flex-wrap items-center gap-2 text-[11px] font-bold tracking-[0.15em] uppercase text-slate-500">
+            <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
               {folderTrail.slice(1).map((folder, index) => (
                 <span key={folder.id} className="contents">
-                  {index > 0 ? <span className="text-slate-300">/</span> : null}
-                  <NavLink to={`/app?folderId=${folder.id}`} className="transition-colors hover:text-cyan-600 cursor-pointer">
-                    {folder.name}
-                  </NavLink>
+                  {index > 0 ? <span className="text-slate-300 mx-1">›</span> : null}
+                  <NavLink to={`/app?folderId=${folder.id}`} className="hover:text-cyan-600 transition-colors">{folder.name}</NavLink>
                 </span>
               ))}
             </nav>
           ) : null}
 
-          {/* Title row */}
-          <div className="relative z-10">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-3xl">
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-cyan-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-pulse"></span>
-                    AI Active
+          <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            {/* Left */}
+            <div className="flex-1 min-w-0">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-600 shadow-sm">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan-500" />
                   </span>
-                </div>
-                <h1 className="text-5xl font-[1000] leading-none tracking-tight text-slate-950 sm:text-6xl lg:text-[72px]">
-                  {currentScopeLabel}
-                </h1>
-                <p className="mt-2 text-[14px] font-medium text-slate-500">
-                  Manage and organize your documents with{' '}
-                  <span className="font-bold text-cyan-600">SKS Intelligence</span>.
-                </p>
+                  AI Workspace
+                </span>
+              </div>
+              <h1 className="text-3xl font-black leading-tight tracking-tight text-slate-900 sm:text-4xl">{currentScopeLabel}</h1>
+              <p className="mt-1.5 text-[13.5px] text-slate-500">Your smart document hub. Upload, organize, and study with <span className="font-semibold text-cyan-600">AI assistance</span>.</p>
 
-                <form onSubmit={handleSearchSubmit} className="group relative mt-7 w-full max-w-2xl">
-                  <div className="absolute left-3.5 top-1/2 z-20 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-cyan-500">
-                    <SearchIcon className={`h-4 w-4 ${isSearching ? 'animate-pulse' : ''}`} />
+              {/* Search */}
+          <div className="mt-6 w-full max-w-2xl">
+            <form onSubmit={handleSearchSubmit} className="group relative">
+              {/* Gradient border wrapper */}
+              <div className="relative rounded-2xl bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-400 p-[1.5px] shadow-lg shadow-cyan-500/20 transition-all duration-300 group-focus-within:shadow-cyan-500/40 group-focus-within:shadow-xl">
+                <div className="flex items-center overflow-hidden rounded-[14px] bg-white">
+                  {/* Icon */}
+                  <div className="flex items-center pl-4 pr-3 shrink-0">
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 text-white shadow-md shadow-cyan-500/30 transition-transform group-focus-within:scale-110 ${isSearching ? 'animate-pulse' : ''}`}>
+                      <SearchIcon className="h-4 w-4" />
+                    </div>
                   </div>
+                  {/* Input */}
                   <input
                     type="text"
                     value={searchInput}
-                    onChange={(event) => setSearchInput(event.target.value)}
-                    placeholder="Search documents..."
-                    className="h-11 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-9 text-sm font-medium text-slate-900 shadow-sm transition-all duration-200 placeholder:text-slate-400 focus:border-cyan-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-cyan-500/10"
+                    onChange={e => setSearchInput(e.target.value)}
+                    placeholder="Search documents, folders, or topics with AI…"
+                    className="h-14 flex-1 bg-transparent text-[14px] font-medium text-slate-900 outline-none placeholder:text-slate-400"
                   />
+                  {/* Right: clear or Ctrl+K */}
                   {searchInput ? (
                     <button
                       type="button"
                       onClick={handleClearSearch}
-                      className="absolute right-3 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-slate-100 text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-500"
-                      title="Clear search"
+                      className="mr-4 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-all"
                     >
-                      <CloseIcon className="h-3 w-3" />
+                      <CloseIcon className="h-3.5 w-3.5" />
                     </button>
                   ) : null}
-                </form>
-              </div>
-
-              <div className="flex w-full flex-col gap-5 lg:max-w-sm">
-                <div className="flex flex-col items-stretch gap-2 sm:flex-row lg:justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateFolderModal(true)}
-                    className="flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold tracking-wide text-slate-700 shadow-sm transition-all duration-200 hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700"
-                  >
-                    <FolderAddIcon className="h-4 w-4 text-cyan-500" />
-                    New Folder
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowUploadModal(true)}
-                    className="flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 px-4 text-sm font-[1000] tracking-wide text-white shadow-lg shadow-cyan-500/30 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-cyan-500/50"
-                  >
-                    <UploadIcon className="h-4 w-4" />
-                    Upload
-                  </button>
                 </div>
+              </div>
+            </form>
+          </div>
 
-                <div className="hidden rounded-[28px] border border-white/80 bg-white/70 p-5 shadow-[0_22px_60px_-42px_rgba(14,116,144,0.65)] backdrop-blur lg:block">
-                  <div className="flex items-center gap-4">
-                    <div className="relative h-16 w-20 shrink-0">
-                      <div className="absolute left-0 top-4 h-12 w-14 rotate-[-8deg] rounded-2xl border border-cyan-100 bg-white shadow-lg shadow-cyan-100/80">
-                        <div className="mx-3 mt-4 h-1.5 rounded-full bg-cyan-200" />
-                        <div className="mx-3 mt-2 h-1.5 rounded-full bg-slate-100" />
-                      </div>
-                      <div className="absolute right-0 top-0 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-500 text-white shadow-xl shadow-cyan-500/25">
-                        <FolderAddIcon className="h-6 w-6" />
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-700">Library</p>
-                      <p className="mt-1 text-lg font-[1000] tracking-tight text-slate-950">Ready to study</p>
-                    </div>
-                  </div>
+            </div>
 
-                  <div className="mt-5 grid grid-cols-3 gap-2">
-                    <div className="rounded-2xl border border-cyan-100 bg-cyan-50/70 px-3 py-2">
-                      <p className="text-base font-[1000] text-slate-950">{childFolders.length}</p>
-                      <p className="text-[10px] font-bold text-slate-500">Folders</p>
-                    </div>
-                    <div className="rounded-2xl border border-sky-100 bg-sky-50/70 px-3 py-2">
-                      <p className="text-base font-[1000] text-slate-950">{total}</p>
-                      <p className="text-[10px] font-bold text-slate-500">Docs</p>
-                    </div>
-                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 py-2">
-                      <p className="text-base font-[1000] text-slate-950">{recentDocuments.length}</p>
-                      <p className="text-[10px] font-bold text-slate-500">Recent</p>
-                    </div>
+            {/* Right: Actions + Stats */}
+            <div className="flex shrink-0 flex-col items-start gap-4 lg:items-end">
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setShowCreateFolderModal(true)}
+                  className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-700 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700 transition-all">
+                  <FolderAddIcon className="h-4 w-4 text-cyan-500" />New Folder
+                </button>
+                <button type="button" onClick={() => setShowUploadModal(true)}
+                  className="flex h-10 items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 px-5 text-[13px] font-bold text-white shadow-lg shadow-cyan-500/30 hover:-translate-y-0.5 hover:shadow-cyan-500/45 active:scale-95 transition-all">
+                  <UploadIcon className="h-4 w-4" />Upload
+                </button>
+              </div>
+              {/* Stats chips */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-white/80 px-4 py-2.5 shadow-sm">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100">
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-indigo-500"><path d="M2 6a2 2 0 0 1 2-2h5l2 2h5a2 2 0 0 1 2 2H2V6Z"/><path d="M2 9.5v5A2.5 2.5 0 0 0 4.5 17h11a2.5 2.5 0 0 0 2.5-2.5v-5H2Z"/></svg>
                   </div>
+                  <div><p className="text-[17px] font-black text-slate-900 leading-none">{childFolders.length}</p><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Folders</p></div>
+                </div>
+                <div className="flex items-center gap-2 rounded-2xl border border-sky-100 bg-white/80 px-4 py-2.5 shadow-sm">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-100">
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-sky-500"><path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h6.879a1.5 1.5 0 0 1 1.06.44l4.122 4.12A1.5 1.5 0 0 1 17 7.622V16.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16.5v-13Z"/></svg>
+                  </div>
+                  <div><p className="text-[17px] font-black text-slate-900 leading-none">{total}</p><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Docs</p></div>
+                </div>
+                <div className="flex items-center gap-2 rounded-2xl border border-emerald-100 bg-white/80 px-4 py-2.5 shadow-sm">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100">
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-emerald-500"><path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0V8c0 .414.336.75.75.75h3.25a.75.75 0 0 0 0-1.5h-2.5V5Z" clipRule="evenodd"/></svg>
+                  </div>
+                  <div><p className="text-[17px] font-black text-slate-900 leading-none">{recentDocuments.length}</p><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Recent</p></div>
                 </div>
               </div>
             </div>
@@ -1365,14 +1378,19 @@ const Dashboard = () => {
           </div>
         ) : null}
 
-        <div className="space-y-12">
+        <div className="space-y-10">
           {/* Recent Activity */}
           {shouldShowRecentDocuments ? (
             <section>
-              <div className="mb-5 flex items-center justify-between border-b border-slate-100 pb-3">
-                <h2 className="text-[11px] font-[1000] uppercase tracking-[0.2em] text-slate-400">
-                  Recent Activity
-                </h2>
+              <div className="mb-5 flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 border border-amber-100">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5 text-amber-500">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0V8c0 .414.336.75.75.75h4a.75.75 0 0 0 0-1.5h-3.25V5Z" clipRule="evenodd"/>
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-[16px] font-bold text-slate-800">Recently Opened</h2>
+                </div>
               </div>
               
               {recentDocumentsLoading ? (
@@ -1395,7 +1413,7 @@ const Dashboard = () => {
                           onClick={() => navigate(`/app/documents/${doc.id}`)}
                           className="flex flex-row items-center gap-4 flex-1 min-w-0 outline-none"
                         >
-                          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 text-white shadow-md transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6`}>
+                          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${type.label === 'PDF' ? 'bg-gradient-to-br from-rose-500 to-red-500' : type.label === 'TXT' ? 'bg-gradient-to-br from-emerald-500 to-teal-500' : 'bg-gradient-to-br from-blue-500 to-indigo-500'} text-white shadow-md transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6`}>
                             <span className="text-[10px] font-black tracking-widest">{type.label}</span>
                           </div>
                           <div className="min-w-0 flex-1">
@@ -1432,8 +1450,14 @@ const Dashboard = () => {
                   })}
                 </div>
               ) : (
-                <div className="rounded-3xl border-2 border-dashed border-sks-slate-200 py-12 text-center">
-                  <p className="text-sm font-medium text-sks-slate-400">No recent documents found.</p>
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-white/60 py-14 text-center">
+                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-6 w-6">
+                      <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h6.879a1.5 1.5 0 0 1 1.06.44l4.122 4.12A1.5 1.5 0 0 1 17 7.622V16.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16.5v-13Z" />
+                    </svg>
+                  </div>
+                  <p className="text-[14px] font-semibold text-slate-600">No recent documents</p>
+                  <p className="mt-1 text-[12px] text-slate-400">Documents you open will appear here.</p>
                 </div>
               )}
             </section>
@@ -1442,11 +1466,16 @@ const Dashboard = () => {
           {/* Folder Section */}
           {childFolders.length > 0 ? (
             <section>
-              <div className="mb-5 border-b border-slate-100 pb-3">
-                <h2 className="text-[11px] font-[1000] uppercase tracking-[0.2em] text-slate-400">
-                  Folders
-                </h2>
+              <div className="mb-5 flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5 text-indigo-500">
+                  <path d="M2 6a2 2 0 0 1 2-2h5l2 2h5a2 2 0 0 1 2 2H2V6Z"/><path d="M2 9.5v5A2.5 2.5 0 0 0 4.5 17h11a2.5 2.5 0 0 0 2.5-2.5v-5H2Z"/>
+                </svg>
               </div>
+              <div>
+                <h2 className="text-[16px] font-bold text-slate-800">Folders</h2>
+              </div>
+            </div>
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {childFolders.map((folder, index) => (
                   <FolderCard
@@ -1473,10 +1502,22 @@ const Dashboard = () => {
 
           {/* Document Section */}
           <section>
-            <div className="mb-5 flex items-center justify-between border-b border-slate-100 pb-3">
-              <h2 className="text-[11px] font-[1000] uppercase tracking-[0.2em] text-slate-400">
-                Library
-              </h2>
+            <div className="mb-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-50 border border-sky-100">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5 text-sky-500">
+                    <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h6.879a1.5 1.5 0 0 1 1.06.44l4.122 4.12A1.5 1.5 0 0 1 17 7.622V16.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16.5v-13Z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-[16px] font-bold text-slate-800">
+                    {searchQuery ? 'Search Results' : 'Document Library'}
+                  </h2>
+                  {searchQuery ? (
+                    <p className="text-[12px] text-slate-400">Showing results for "{searchQuery}"</p>
+                  ) : null}
+                </div>
+              </div>
               {activeTotalPages > 1 ? (
                 <span className="text-[11px] font-[1000] uppercase tracking-widest text-slate-400">
                   Page {activeCurrentPage} of {activeTotalPages}
@@ -1484,7 +1525,7 @@ const Dashboard = () => {
               ) : null}
             </div>
 
-            <div className="overflow-hidden rounded-[24px] border border-white/60 bg-white/60 backdrop-blur-xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] px-2 pb-2 pt-1">
+            <div className="overflow-hidden rounded-[20px] border border-slate-100 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.06)] px-2 pb-2 pt-1">
               <table className="w-full border-separate border-spacing-0 text-left">
                 <thead>
                   <tr>
@@ -1614,13 +1655,15 @@ const Dashboard = () => {
         />
       ) : null}
 
-      <UploadModal
-        isOpen={showUploadModal}
-        onClose={() => setShowUploadModal(false)}
-        onUploadSuccess={handleUpload}
-        folders={folderChoices}
-        defaultFolderId={selectedFolderId || rootFolder?.id || ''}
-      />
+      {showUploadModal ? (
+        <UploadModal
+          isOpen={showUploadModal}
+          onClose={() => setShowUploadModal(false)}
+          onUploadSuccess={handleUpload}
+          folders={folderChoices}
+          defaultFolderId={selectedFolderId || rootFolder?.id || ''}
+        />
+      ) : null}
 
       {showCreateFolderModal ? (
         <div

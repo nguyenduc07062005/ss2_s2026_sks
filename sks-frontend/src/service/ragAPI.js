@@ -1,85 +1,13 @@
 import apiClient from "../services/apiClient.js";
 
-const normalizeText = (value = "") => String(value).replace(/\s+/g, " ").trim();
-
-const normalizeMindMapStudyNote = (note) => {
-  if (!note || typeof note !== "object") return null;
-
-  const overview = normalizeText(note.overview);
-  const explanation = normalizeText(note.explanation);
-  const keyPoints = Array.isArray(note.keyPoints)
-    ? note.keyPoints.map(normalizeText).filter(Boolean)
-    : Array.isArray(note.key_points)
-      ? note.key_points.map(normalizeText).filter(Boolean)
-      : [];
-  const studyFocus = normalizeText(note.studyFocus || note.study_focus);
-
-  if (!overview && !explanation && keyPoints.length === 0 && !studyFocus) {
-    return null;
-  }
-
-  return {
-    overview,
-    explanation,
-    keyPoints,
-    studyFocus,
-  };
-};
-
-const normalizeMindMapNode = (node, fallbackId = "root") => {
-  if (!node || typeof node !== "object") return null;
-
-  const label = normalizeText(node.label);
-  const summary = normalizeText(node.summary);
-  const children = Array.isArray(node.children)
-    ? node.children
-        .map((child, index) =>
-          normalizeMindMapNode(child, `${fallbackId}-${index + 1}`),
-        )
-        .filter(Boolean)
-    : [];
-
-  if (!label) return null;
-
-  return {
-    ...node,
-    id: node.id || fallbackId,
-    label,
-    summary,
-    studyNote: normalizeMindMapStudyNote(node.studyNote),
-    children,
-  };
-};
-
-const normalizeMindMapArtifact = (artifact) => {
-  if (!artifact || typeof artifact !== "object") return null;
-
-  const root = normalizeMindMapNode(artifact.root, "root");
-
-  if (!root) return null;
-
-  return {
-    ...artifact,
-    root,
-  };
-};
-
-const normalizeMindMapResponse = (response) => {
-  const mindMap = normalizeMindMapNode(response?.mindMap, "root");
-  const versions = Array.isArray(response?.versions)
-    ? response.versions.map(normalizeMindMapArtifact).filter(Boolean)
-    : [];
-
-  return {
-    ...response,
-    mindMap,
-    versions,
-  };
-};
-
-const askDocument = async (documentId, question) => {
+const askDocument = async (
+  documentId,
+  question,
+  mode = "document_assisted",
+) => {
   const response = await apiClient.post(`/rag/documents/${documentId}/ask`, {
     question,
+    mode,
   });
   return response.data;
 };
@@ -118,24 +46,24 @@ const getDocumentSummary = async (
   return response.data;
 };
 
-const getDocumentMindMap = async (
-  documentId,
-  language = "en",
-  options = {},
-) => {
-  const response = await apiClient.post(
-    `/rag/documents/${documentId}/mindmap`,
-    {
-      language,
-      forceRefresh: Boolean(options.forceRefresh),
-      slot: options.slot,
-      instruction:
-        typeof options.instruction === "string"
-          ? options.instruction
-          : undefined,
-    },
-  );
-  return normalizeMindMapResponse(response.data);
+const generateQuiz = async (payload) => {
+  const response = await apiClient.post("/rag/quiz/generate", payload);
+  return response.data;
+};
+
+const getQuizChatHistory = async () => {
+  const response = await apiClient.get("/rag/quiz/chat/history");
+  return response.data;
+};
+
+const sendQuizChatMessage = async (payload) => {
+  const response = await apiClient.post("/rag/quiz/chat", payload);
+  return response.data;
+};
+
+const clearQuizChatHistory = async () => {
+  const response = await apiClient.delete("/rag/quiz/chat/history");
+  return response.data;
 };
 
 const getStudyGpsPlan = async () => {
@@ -181,15 +109,18 @@ const clearStudyGpsPlan = async () => {
 
 export {
   askDocument,
+  clearQuizChatHistory,
   clearStudyGpsDayChatHistory,
   clearStudyGpsPlan,
   clearDocumentAskHistory,
   generateStudyGpsPlan,
+  generateQuiz,
   getDocumentAskHistory,
-  getDocumentMindMap,
   getDocumentSummary,
+  getQuizChatHistory,
   getStudyGpsDayChatHistory,
   getStudyGpsPlan,
+  sendQuizChatMessage,
   sendStudyGpsDayChat,
   startStudyGpsDayChat,
 };

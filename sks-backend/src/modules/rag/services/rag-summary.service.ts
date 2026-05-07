@@ -23,21 +23,32 @@ import { RagDocumentContextService } from './rag-document-context.service';
 import { RagIndexingService } from './rag-indexing.service';
 import { RagStructuredGenerationService } from './rag-structured-generation.service';
 import { parseJsonWithRepair } from '../utils/llm-json';
-
-const MAX_SUMMARY_CONTEXT_CHUNKS = 18;
-const SUMMARY_ARTIFACT_VERSION = 3;
+import { buildArtifactCacheKey } from '../utils/rag-artifact-key.util';
+import {
+  getLanguageName,
+  normalizeInstruction,
+  normalizeSlot,
+  resolveSelectedSlot,
+  toErrorMessage,
+  toErrorStack,
+  buildInstructionBlock,
+} from '../shared-rag.util';
+import {
+  MAX_SUMMARY_CONTEXT_CHUNKS,
+  SUMMARY_ARTIFACT_VERSION,
+} from '../constants';
 
 const SUMMARY_PROMPT_TEMPLATE = [
   'You are a senior academic and technical analyst.',
   'Create a faithful summary using ONLY the provided document context.',
   'Do not hallucinate facts, numbers, claims, or conclusions that are not present in the context.',
   'If the context is partial, keep the summary partial and explicit.',
-  'Write the final answer entirely in {languageName}.',
+  'Default output language is {languageName}. If the user instruction explicitly requests a different language, write the entire response in that language instead.',
   'Optimize for study value and fidelity to the source text.',
   'Prefer concrete concepts, definitions, workflows, comparisons, mechanisms, and examples from the document.',
   'Avoid generic filler, vague praise, and meta commentary.',
   'Do not use Markdown syntax such as **bold**, headings, blockquotes, or code fences inside JSON string fields.',
-  'Follow any user instruction only as a lens for emphasis, structure, or depth.',
+  'Follow the user instruction precisely — it may specify a different language, a different format, a different depth, or a different focus.',
   'If the user explicitly asks for one paragraph, no bullet points, or no section headings, choose format "narrative".',
   'Otherwise choose format "structured".',
   'User instruction:',
@@ -63,7 +74,7 @@ const SUMMARY_JSON_FALLBACK_PROMPT_TEMPLATE = [
   'Do not add facts that are not present in the context.',
   'Optimize for study value and fidelity to the source text.',
   'Do not use Markdown syntax such as **bold**, headings, blockquotes, or code fences inside JSON string fields.',
-  'Follow any user instruction only as a lens for emphasis, structure, or depth.',
+  'Follow the user instruction precisely — it may specify a different language, format, depth, or focus.',
   'If the user explicitly asks for one paragraph, no bullet points, or no section headings, choose format "narrative". Otherwise choose format "structured".',
   'Return ONLY valid JSON with this exact structure:',
   '{{',
@@ -74,7 +85,7 @@ const SUMMARY_JSON_FALLBACK_PROMPT_TEMPLATE = [
   '  "key_points": ["point 1", "point 2", "point 3", "point 4", "point 5"],',
   '  "conclusion": "1 to 2 sentences when format is structured, otherwise empty string"',
   '}}',
-  'Write the full response in {languageName}.',
+  'Default output language is {languageName}. If the user instruction explicitly requests a different language, use that language for the entire response.',
   'User instruction:',
   '{instructionBlock}',
   '',
@@ -167,17 +178,39 @@ export class RagSummaryService {
       throw new NotFoundException('Document not found or not owned by user');
     }
 
-    const requestedInstruction = this.normalizeInstruction(instruction);
-    const requestedSlot = requestedInstruction
-      ? 'custom'
-      : this.normalizeSlot(slot);
+    const requestedInstruction = normalizeInstruction(instruction);
+    const requestedSlot = requestedInstruction ? 'custom' : normalizeSlot(slot);
+    const cacheKey = buildArtifactCacheKey({
+      artifactType: 'summary',
+      documentId,
+      contentHash: document.contentHash,
+      language,
+      mode: requestedInstruction ? 'custom' : 'default',
+      instruction: requestedInstruction,
+      artifactVersion: SUMMARY_ARTIFACT_VERSION,
+    });
+    const keyedSummary =
+      this.ragArtifactCacheService.readArtifact<SummaryArtifact>(
+        userDocument,
+        cacheKey.key,
+      )?.payload;
+
+    if (keyedSummary && this.isUsableSummary(keyedSummary) && !forceRefresh) {
+      return this.buildSummaryResponse(
+        this.buildSummaryStateFromArtifact(keyedSummary),
+        keyedSummary.slot,
+        true,
+      );
+    }
+
     const cachedSummaryState = this.ragArtifactCacheService.getSummaryState(
       userDocument,
       language,
       document,
     );
-    const cachedSummarySlot = this.resolveSelectedSlot(
-      cachedSummaryState,
+    const cachedSummarySlot = resolveSelectedSlot(
+      cachedSummaryState?.activeSlot,
+      cachedSummaryState?.versions,
       requestedSlot,
     );
     const cachedSummary = cachedSummarySlot
@@ -189,6 +222,11 @@ export class RagSummaryService {
       cachedSummarySlot &&
       cachedSummary &&
       this.isUsableSummary(cachedSummary) &&
+      this.isCachedInstructionCompatible(
+        cachedSummary.instruction,
+        requestedInstruction,
+        requestedSlot,
+      ) &&
       !forceRefresh
     ) {
       return this.buildSummaryResponse(
@@ -218,8 +256,8 @@ export class RagSummaryService {
         this.ragDocumentContextService.buildSummaryContext(
           representativeChunks,
         ),
-      languageName: this.getLanguageName(language),
-      instructionBlock: this.buildInstructionBlock(requestedInstruction),
+      languageName: getLanguageName(language),
+      instructionBlock: buildInstructionBlock(requestedInstruction),
     });
     const normalizedSummary = this.normalizeSummary(
       summary,
@@ -248,6 +286,22 @@ export class RagSummaryService {
       instruction: requestedInstruction,
     };
 
+    await this.ragArtifactCacheService.writeArtifact(userDocument, {
+      activeSelector: this.buildSummaryActiveSelector(language, targetSlot),
+      artifact: {
+        key: cacheKey.key,
+        artifactType: 'summary',
+        language,
+        mode: cacheKey.mode,
+        documentId,
+        contentHash: cacheKey.contentHash,
+        instructionHash: cacheKey.instructionHash,
+        artifactVersion: SUMMARY_ARTIFACT_VERSION,
+        generatedAt: summaryArtifact.generatedAt,
+        payload: summaryArtifact,
+      },
+    });
+
     await this.ragArtifactCacheService.saveSummary(
       userDocument,
       summaryArtifact,
@@ -267,6 +321,24 @@ export class RagSummaryService {
     }
 
     return this.buildSummaryResponse(nextSummaryState, targetSlot, false);
+  }
+
+  private buildSummaryActiveSelector(
+    language: SummaryLanguage,
+    slot: SummaryVersionSlot,
+  ): string {
+    return `summary:${language}:${slot}`;
+  }
+
+  private buildSummaryStateFromArtifact(
+    summary: SummaryArtifact,
+  ): SummaryLanguageCache {
+    return {
+      activeSlot: summary.slot,
+      versions: {
+        [summary.slot]: summary,
+      },
+    };
   }
 
   toPlainText(summary: StructuredDocumentSummary): string {
@@ -306,8 +378,7 @@ export class RagSummaryService {
         outputSchema: SUMMARY_OUTPUT_SCHEMA,
         schemaName: 'document_summary',
         operationLabel: 'Summary generation',
-        skipJsonSchema: true,
-        skipFunctionCalling: true,
+        policy: 'raw_json_only',
         modelOptions: {
           temperature: 0.2,
           maxOutputTokens: 8192,
@@ -321,7 +392,7 @@ export class RagSummaryService {
     } catch (rawFallbackError) {
       this.logger.error(
         'Summary generation failed after LangChain and raw Gemini fallback.',
-        this.toErrorStack(rawFallbackError),
+        toErrorStack(rawFallbackError),
       );
       throw this.toSummaryGenerationException(rawFallbackError);
     }
@@ -336,14 +407,14 @@ export class RagSummaryService {
     const fallbackCopy =
       language === 'vi'
         ? {
-            title: `TÃ³m táº¯t ${documentTitle}`,
+            title: `Tóm tắt ${documentTitle}`,
             overview:
-              'KhÃ´ng thá»ƒ trÃ­ch xuáº¥t Ä‘áº§y Ä‘á»§ pháº§n tá»•ng quan tá»« ngá»¯ cáº£nh hiá»‡n cÃ³ cá»§a tÃ i liá»‡u.',
+              'Không thể trích xuất đầy đủ phần tổng quan từ ngữ cảnh hiện có của tài liệu.',
             keyPoints: [
-              'Ngá»¯ cáº£nh trÃ­ch xuáº¥t tá»« tÃ i liá»‡u chÆ°a Ä‘á»§ rÃµ Ä‘á»ƒ rÃºt ra toÃ n bá»™ Ã½ chÃ­nh.',
+              'Ngữ cảnh trích xuất từ tài liệu chưa đủ rõ để rút ra toàn bộ ý chính.',
             ],
             conclusion:
-              'Báº£n tÃ³m táº¯t hiá»‡n táº¡i chá»‰ pháº£n Ã¡nh pháº§n ná»™i dung Ä‘Ã£ Ä‘Æ°á»£c trÃ­ch xuáº¥t thÃ nh cÃ´ng.',
+              'Bản tóm tắt hiện tại chỉ phản ánh phần nội dung đã được trích xuất thành công.',
           }
         : {
             title: `Summary of ${documentTitle}`,
@@ -390,67 +461,6 @@ export class RagSummaryService {
     };
   }
 
-  private getLanguageName(language: SummaryLanguage): string {
-    return language === 'vi' ? 'Vietnamese' : 'English';
-  }
-
-  private buildInstructionBlock(instruction?: string | null): string {
-    if (!instruction) {
-      return 'No additional user instruction. Produce the best faithful general-purpose study summary.';
-    }
-
-    return instruction;
-  }
-
-  private normalizeInstruction(instruction?: string | null): string | null {
-    if (!instruction) {
-      return null;
-    }
-
-    const normalizedInstruction = instruction.replace(/\r\n/g, '\n').trim();
-    return normalizedInstruction ? normalizedInstruction : null;
-  }
-
-  private normalizeSlot(
-    slot?: SummaryVersionSlot,
-  ): SummaryVersionSlot | undefined {
-    if (slot === 'custom' || slot === 'default') {
-      return slot;
-    }
-
-    return undefined;
-  }
-
-  private resolveSelectedSlot(
-    summaryState: SummaryLanguageCache | null,
-    requestedSlot?: SummaryVersionSlot,
-  ): SummaryVersionSlot | null {
-    if (!summaryState?.versions) {
-      return null;
-    }
-
-    if (requestedSlot && summaryState.versions[requestedSlot]) {
-      return requestedSlot;
-    }
-
-    if (
-      summaryState.activeSlot &&
-      summaryState.versions[summaryState.activeSlot]
-    ) {
-      return summaryState.activeSlot;
-    }
-
-    if (summaryState.versions.default) {
-      return 'default';
-    }
-
-    if (summaryState.versions.custom) {
-      return 'custom';
-    }
-
-    return null;
-  }
-
   private isUsableSummary(
     summary: StructuredDocumentSummary | SummaryArtifact | undefined,
   ): boolean {
@@ -484,6 +494,18 @@ export class RagSummaryService {
       conclusion.length >= 40 ||
       keyPoints.some((point) => point.length >= 40)
     );
+  }
+
+  private isCachedInstructionCompatible(
+    cachedInstruction: string | null | undefined,
+    requestedInstruction: string | null,
+    requestedSlot?: SummaryVersionSlot,
+  ): boolean {
+    if (requestedSlot === 'custom' || requestedInstruction) {
+      return (cachedInstruction ?? null) === requestedInstruction;
+    }
+
+    return true;
   }
 
   private isGenericFallbackSummary(value: string): boolean {
@@ -625,26 +647,10 @@ export class RagSummaryService {
     };
   }
 
-  private toErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-
-    return String(error);
-  }
-
-  private toErrorStack(error: unknown): string | undefined {
-    if (error instanceof Error) {
-      return error.stack;
-    }
-
-    return undefined;
-  }
-
   private toSummaryGenerationException(
     error: unknown,
   ): BadGatewayException | ServiceUnavailableException {
-    const normalizedMessage = this.toErrorMessage(error).toLowerCase();
+    const normalizedMessage = toErrorMessage(error).toLowerCase();
 
     if (
       normalizedMessage.includes('resource_exhausted') ||

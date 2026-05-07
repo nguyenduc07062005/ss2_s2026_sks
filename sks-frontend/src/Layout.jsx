@@ -12,6 +12,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const DocumentViewer = lazy(() => import('./pages/DocumentViewer.jsx'));
 const Favorites = lazy(() => import('./pages/Favorites.jsx'));
 const Home = lazy(() => import('./pages/Home.jsx'));
+const Quiz = lazy(() => import('./pages/Quiz.jsx'));
 const StudyGPS = lazy(() => import('./pages/StudyGPS.jsx'));
 
 const renderRoute = (element) => (
@@ -41,6 +42,7 @@ const Layout = () => {
             <Route index element={renderRoute(<Dashboard />)} />
             <Route path="home" element={<Navigate to="/app" replace />} />
             <Route path="study-gps" element={renderRoute(<StudyGPS />)} />
+            <Route path="quiz" element={renderRoute(<Quiz />)} />
             <Route path="favorites" element={renderRoute(<Favorites />)} />
             <Route
               path="documents/:documentId"

@@ -87,11 +87,10 @@ export class DocumentController {
       createDocumentDto,
       ownerId,
     );
-    await this.ragService.ensureDocumentIndexed(uploaded.id);
     const updatedList = await this.documentService.getDocuments(ownerId);
 
     return {
-      message: 'Document uploaded and list refreshed successfully',
+      message: 'Document uploaded. AI indexing is running in the background.',
       uploaded,
       updatedList,
     };

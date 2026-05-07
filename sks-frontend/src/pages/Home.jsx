@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import BrandBadge from '../components/BrandBadge.jsx';
 
 const HERO_SLIDES = [
   { id: 1, src: 'https://cdn.elearningindustry.com/wp-content/uploads/2024/07/Shutterstock_2480344323.jpg', alt: 'AI Education' },
@@ -30,7 +31,7 @@ const FEATURES = [
   },
   {
     title: 'AI Intelligence',
-    description: 'Get instant AI summaries, conceptual diagrams, and chat with your documents. Let AI extract insights for you.',
+    description: 'Get instant AI summaries, practice quizzes, notes, and document Q&A. Let AI extract insights for you.',
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-8 w-8">
         <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
@@ -56,18 +57,41 @@ const FEATURES = [
 
 const AI_CAPABILITIES = [
   { icon: '✦', label: 'Summary Generation', description: 'Auto-generate comprehensive summaries in Vietnamese or English' },
-  { icon: '📐', label: 'Conceptual Diagrams', description: 'Visualize document structure with AI-powered mind maps' },
+  { icon: '📝', label: 'Practice Quizzes', description: 'Generate focused review questions from your study documents' },
   { icon: '🧠', label: 'Document Chat', description: 'Ask questions and get answers grounded in your documents' },
   { icon: '🔗', label: 'Related Documents', description: 'Discover semantic connections across your entire library' },
 ];
 
 const STEPS = [
   { number: '01', title: 'Upload', description: 'Drop your documents into the workspace — PDFs, DOCX, TXT, and more.' },
-  { number: '02', title: 'Analyze', description: 'AI processes and indexes your content for intelligent retrieval.' },
-  { number: '03', title: 'Discover', description: 'Get summaries, ask questions, and find connections you never knew existed.' },
+  { number: '02', title: 'Analyze', description: 'AI prepares your files so search, summaries, questions, and quizzes are ready when you need them.' },
+  { number: '03', title: 'Discover', description: 'Get summaries, ask questions, save notes, generate quizzes, and find related documents.' },
 ];
 
 const STUDY_GPS_HIGHLIGHTS = ['Clear next step', 'Less confusion', 'Exam-ready'];
+
+const INFO_POINTS = [
+  {
+    label: 'Supported files',
+    value: 'PDF, DOCX, TXT',
+    description: 'Upload study materials, preview them, organize them into folders, and download them later.',
+  },
+  {
+    label: 'Smart search',
+    value: 'Find ideas faster',
+    description: 'Search by meaning, discover related materials, and continue studying without digging through every file.',
+  },
+  {
+    label: 'Personal library',
+    value: 'Your study space',
+    description: 'Keep your documents, folders, notes, and AI history organized in your own account.',
+  },
+  {
+    label: 'Study context',
+    value: 'Summary, Ask AI, Notes, Quiz',
+    description: 'The document viewer keeps study actions connected to the current source document.',
+  },
+];
 
 const Home = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -81,10 +105,10 @@ const Home = () => {
   useEffect(() => {
     const slideTimer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % HERO_SLIDES.length);
-    }, 10000); // 10s/ảnh
+    }, 10000); // 10s per image
     const typingTimer = setInterval(() => {
       setTypingIndex((prev) => (prev + 1) % 4);
-    }, 6000); // 6s/chữ
+    }, 6000); // 6s per text item
     const handleScroll = () => {
       setIsScrolled((window.scrollY || document.documentElement.scrollTop || 0) > 20);
     };
@@ -110,23 +134,8 @@ const Home = () => {
       >
         <div className="relative mx-auto flex w-full max-w-[1440px] items-center justify-between px-6 lg:px-10">
           <div className="flex min-w-0 items-center gap-8">
-            <a href="#top" className="group flex items-center gap-4 outline-none transition-all">
-              <div className="relative flex h-9 w-9 items-center justify-center">
-                <div className="absolute inset-0 rounded-2xl bg-cyan-500/20 blur-xl transition-colors group-hover:bg-cyan-500/30" />
-                <div className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-slate-900 shadow-xl ring-1 ring-cyan-300/20 transition-all duration-500 group-hover:rotate-6 group-hover:scale-110">
-                  <span className="font-display text-[14px] font-black italic text-cyan-400">S</span>
-                </div>
-              </div>
-              <div className="hidden flex-col items-start leading-none pointer-events-none sm:flex">
-                <span className="text-lg font-black tracking-tighter text-slate-900">SKS</span>
-                <div className="mt-0.5 flex items-center gap-1">
-                  <span className="relative flex h-1 w-1">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                    <span className="relative inline-flex h-1 w-1 rounded-full bg-emerald-500" />
-                  </span>
-                  <span className="text-[7px] font-black uppercase tracking-[0.2em] text-cyan-600/80">AI Active</span>
-                </div>
-              </div>
+            <a href="#top" className="group outline-none transition-all">
+              <BrandBadge size={34} />
             </a>
 
             <nav className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-10 lg:flex">
@@ -195,7 +204,7 @@ const Home = () => {
 
           {/* Feature Checkmarks */}
           <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
-            {['Smart Summary', 'Document Chat', 'Auto Mindmap'].map((feature) => (
+            {['Smart Summary', 'Document Chat', 'Practice Quiz'].map((feature) => (
               <div key={feature} className="flex items-center gap-2 text-[13px] font-bold text-slate-500">
                 <div className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-100 text-cyan-600">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
@@ -314,6 +323,28 @@ const Home = () => {
         </div>
       </section>
 
+      {/* Platform details */}
+      <section className="scroll-mt-28 py-6 lg:py-8">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {INFO_POINTS.map((item) => (
+            <article
+              key={item.label}
+              className="rounded-3xl border border-white/70 bg-white/75 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.035)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:bg-white hover:shadow-[0_16px_45px_-18px_rgba(15,23,42,0.25)]"
+            >
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-600">
+                {item.label}
+              </p>
+              <h3 className="mt-2 text-sm font-[1000] tracking-tight text-slate-950">
+                {item.value}
+              </h3>
+              <p className="mt-3 text-[13px] font-medium leading-6 text-slate-500">
+                {item.description}
+              </p>
+            </article>
+          ))}
+        </div>
+      </section>
+
 
       {/* ═══ FEATURES SECTION ═══ */}
       <section id="features" className="scroll-mt-28 py-16 lg:py-24">
@@ -358,17 +389,9 @@ const Home = () => {
       {/* ═══ AI SHOWCASE SECTION ═══ */}
       <section id="ai-intelligence" className="scroll-mt-28 py-8 lg:py-12">
         <div
-          className="relative overflow-hidden rounded-[32px] shadow-2xl animate-slide-up [animation-delay:0.15s] [animation-fill-mode:both]"
+          className="relative overflow-hidden rounded-[32px] bg-slate-950 shadow-2xl animate-slide-up [animation-delay:0.15s] [animation-fill-mode:both]"
         >
-          {/* Background image */}
-          <img
-            src="/ai-showcase-bg.png"
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-            aria-hidden="true"
-          />
-          {/* Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-900/90 via-slate-900/85 to-indigo-950/90" />
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950" />
 
           <div className="relative z-10 px-8 py-14 sm:px-14 sm:py-20">
             <div className="flex items-center gap-3 mb-8">
@@ -596,12 +619,7 @@ const Home = () => {
           <div className="grid gap-12 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8 border-b border-slate-200/50 pb-16">
             {/* Col 1: Brand */}
             <div className="flex flex-col gap-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-xl transition-transform hover:scale-105">
-                  <span className="font-display text-[16px] font-black italic text-cyan-400">S</span>
-                </div>
-                <span className="text-xl font-black tracking-tight text-slate-900">SKS</span>
-              </div>
+              <BrandBadge size={34} />
               <p className="max-w-xs text-[14px] leading-relaxed text-slate-500 font-medium">
                 SKS is an intelligent knowledge ecosystem leveraging Gemini AI to transform how researchers and students organize information.
               </p>

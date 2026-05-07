@@ -7,6 +7,8 @@ describe('RagQuestionAnsweringService', () => {
   };
   const geminiService = {
     createEmbedding: jest.fn<Promise<number[]>, [string]>(),
+  };
+  const generationService = {
     generateText: jest.fn<Promise<string>, [string]>(),
   };
   const documentAskHistoryRepository = {
@@ -34,39 +36,48 @@ describe('RagQuestionAnsweringService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     geminiService.createEmbedding.mockResolvedValue([0.1, 0.2, 0.3]);
-    geminiService.generateText.mockResolvedValue('Answer from model   ');
+    generationService.generateText.mockResolvedValue('Answer from model   ');
     dataSource.query.mockResolvedValue([
       {
         documentId: 'doc-1',
-        documentName: 'Debugging Notes',
+        documentName: 'Sample Document',
         chunkIndex: 0,
         pageNumber: 1,
         snippet: 'Relevant snippet',
-        chunkText: 'Relevant chunk text',
+        chunkText:
+          'Relevant chunk text with enough document evidence to support a grounded answer from the current document.',
         score: 0.91234,
       },
     ]);
     ragDocumentContextService.ensureOwnedDocument.mockResolvedValue({
       id: 'doc-1',
-      title: 'Debugging Notes',
+      title: 'Sample Document',
     });
     ragIndexingService.ensureDocumentIndexed.mockResolvedValue(undefined);
-    documentAskHistoryRepository.create.mockResolvedValue({
-      id: 'history-1',
-      question: 'What is this?',
-      answer: 'Answer from model',
-      sources: [
-        {
-          documentId: 'doc-1',
-          documentName: 'Debugging Notes',
-          chunkIndex: 0,
-          pageNumber: 1,
-          snippet: 'Relevant snippet',
-          score: 0.9123,
-        },
-      ],
-      createdAt: new Date('2026-04-13T00:00:00.000Z'),
-    });
+    documentAskHistoryRepository.create.mockImplementation((entry) =>
+      Promise.resolve({
+        id: 'history-1',
+        question:
+          typeof entry === 'object' &&
+          entry !== null &&
+          'question' in entry &&
+          typeof entry.question === 'string'
+            ? entry.question
+            : 'What is this?',
+        answer:
+          typeof entry === 'object' &&
+          entry !== null &&
+          'answer' in entry &&
+          typeof entry.answer === 'string'
+            ? entry.answer
+            : 'Answer from model',
+        sources:
+          typeof entry === 'object' && entry !== null && 'sources' in entry
+            ? entry.sources
+            : [],
+        createdAt: new Date('2026-04-13T00:00:00.000Z'),
+      }),
+    );
     documentAskHistoryRepository.findByUserAndDocument.mockResolvedValue([]);
     documentAskHistoryRepository.findRecentByUserAndDocument.mockResolvedValue(
       [],
@@ -79,6 +90,7 @@ describe('RagQuestionAnsweringService', () => {
     service = new RagQuestionAnsweringService(
       dataSource as never,
       geminiService as never,
+      generationService as never,
       documentAskHistoryRepository as never,
       ragDocumentContextService as never,
       ragIndexingService as never,
@@ -122,7 +134,7 @@ describe('RagQuestionAnsweringService', () => {
       'doc-1',
     );
     expect(geminiService.createEmbedding).toHaveBeenCalledWith('What is this?');
-    expect(geminiService.generateText).toHaveBeenCalled();
+    expect(generationService.generateText).toHaveBeenCalled();
     expect(
       documentAskHistoryRepository.findRecentByUserAndDocument,
     ).toHaveBeenCalledWith('user-1', 'doc-1', 4);
@@ -133,7 +145,7 @@ describe('RagQuestionAnsweringService', () => {
         sources: [
           {
             documentId: 'doc-1',
-            documentName: 'Debugging Notes',
+            documentName: 'Sample Document',
             chunkIndex: 0,
             pageNumber: 1,
             snippet: 'Relevant snippet',
@@ -145,26 +157,36 @@ describe('RagQuestionAnsweringService', () => {
     expect(
       documentAskHistoryRepository.trimToLatestByUserAndDocument,
     ).toHaveBeenCalledWith('user-1', 'doc-1', 6);
-    expect(geminiService.generateText).toHaveBeenCalledWith(
+    expect(generationService.generateText).toHaveBeenCalledWith(
       expect.stringContaining('Recent conversation'),
     );
-    expect(geminiService.generateText).toHaveBeenCalledWith(
+    expect(generationService.generateText).toHaveBeenCalledWith(
       expect.stringContaining('User: Previous question'),
     );
-    expect(geminiService.generateText).toHaveBeenCalledWith(
+    expect(generationService.generateText).toHaveBeenCalledWith(
       expect.stringContaining(
         'Assistant: Previous answer with **keyword** emphasis.',
       ),
     );
-    expect(geminiService.generateText).toHaveBeenCalledWith(
+    expect(generationService.generateText).toHaveBeenCalledWith(
       expect.stringContaining('Format the answer in clean Markdown.'),
+    );
+    expect(generationService.generateText).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Answer using ONLY the provided document context.',
+      ),
+    );
+    expect(generationService.generateText).toHaveBeenCalledWith(
+      expect.not.stringContaining(
+        'You may use your general knowledge to answer the user.',
+      ),
     );
     expect(result).toEqual({
       answer: 'Answer from model',
       sources: [
         {
           documentId: 'doc-1',
-          documentName: 'Debugging Notes',
+          documentName: 'Sample Document',
           chunkIndex: 0,
           pageNumber: 1,
           snippet: 'Relevant snippet',
@@ -178,7 +200,7 @@ describe('RagQuestionAnsweringService', () => {
         sources: [
           {
             documentId: 'doc-1',
-            documentName: 'Debugging Notes',
+            documentName: 'Sample Document',
             chunkIndex: 0,
             pageNumber: 1,
             snippet: 'Relevant snippet',
@@ -190,6 +212,92 @@ describe('RagQuestionAnsweringService', () => {
     });
   });
 
+  it('does not call the text model in strict mode when retrieved evidence is weak', async () => {
+    dataSource.query.mockResolvedValue([
+      {
+        documentId: 'doc-1',
+        documentName: 'Sample Document',
+        chunkIndex: 0,
+        pageNumber: 1,
+        snippet: 'Weak snippet',
+        chunkText: 'Weak chunk text',
+        score: 0.2,
+      },
+    ]);
+
+    const result = await service.askDocument(
+      'doc-1',
+      'user-1',
+      'What does the document say about this?',
+    );
+
+    expect(geminiService.createEmbedding).toHaveBeenCalledWith(
+      'What does the document say about this?',
+    );
+    expect(generationService.generateText).not.toHaveBeenCalled();
+    expect(documentAskHistoryRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        question: 'What does the document say about this?',
+        answer:
+          'The document context is not sufficient to answer this question with reliable evidence.',
+        sources: [],
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        answer:
+          'The document context is not sufficient to answer this question with reliable evidence.',
+        sources: [],
+      }),
+    );
+  });
+
+  it('answers in document assisted mode with separated document and general knowledge instructions', async () => {
+    await service.askDocument(
+      'doc-1',
+      'user-1',
+      'Can you expand this with background?',
+      'document_assisted',
+    );
+
+    expect(generationService.generateText).toHaveBeenCalledWith(
+      expect.stringContaining('Use the document context first.'),
+    );
+    expect(generationService.generateText).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'You may add general knowledge only after clearly separating it from document-grounded facts.',
+      ),
+    );
+    expect(generationService.generateText).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Relevant chunk text with enough document evidence',
+      ),
+    );
+  });
+
+  it('answers in general chat mode without indexing or retrieving document chunks', async () => {
+    const result = await service.askDocument(
+      'doc-1',
+      'user-1',
+      'Explain spaced repetition in general.',
+      'general_chat',
+    );
+
+    expect(ragDocumentContextService.ensureOwnedDocument).toHaveBeenCalledWith(
+      'doc-1',
+      'user-1',
+    );
+    expect(ragIndexingService.ensureDocumentIndexed).not.toHaveBeenCalled();
+    expect(geminiService.createEmbedding).not.toHaveBeenCalled();
+    expect(dataSource.query).not.toHaveBeenCalled();
+    expect(generationService.generateText).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Answer as a general assistant. Document context is not required.',
+      ),
+    );
+    expect(result.sources).toEqual([]);
+  });
+
   it('maps ask history items from the repository', async () => {
     documentAskHistoryRepository.findRecentByUserAndDocument.mockResolvedValue([
       {
@@ -199,7 +307,7 @@ describe('RagQuestionAnsweringService', () => {
         sources: [
           {
             documentId: 'doc-1',
-            documentName: 'Debugging Notes',
+            documentName: 'Sample Document',
             chunkIndex: 2,
             pageNumber: 3,
             snippet: 'Another snippet',
@@ -241,7 +349,7 @@ describe('RagQuestionAnsweringService', () => {
         sources: [
           {
             documentId: 'doc-1',
-            documentName: 'Debugging Notes',
+            documentName: 'Sample Document',
             chunkIndex: 2,
             pageNumber: 3,
             snippet: 'Another snippet',
@@ -283,10 +391,10 @@ describe('RagQuestionAnsweringService', () => {
     expect(
       documentAskHistoryRepository.findByUserAndDocument,
     ).toHaveBeenCalledWith('user-1', 'doc-1');
-    expect(geminiService.generateText).toHaveBeenCalledWith(
+    expect(generationService.generateText).toHaveBeenCalledWith(
       expect.stringContaining('User: First question'),
     );
-    expect(geminiService.generateText).toHaveBeenCalledWith(
+    expect(generationService.generateText).toHaveBeenCalledWith(
       expect.stringContaining('Assistant: Second answer'),
     );
     expect(result.answer).toBe('Answer from model');

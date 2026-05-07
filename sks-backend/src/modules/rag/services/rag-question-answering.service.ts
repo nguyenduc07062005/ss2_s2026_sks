@@ -1,10 +1,41 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { PromptTemplate } from '@langchain/core/prompts';
-import pgvector from 'pgvector';
 import { DataSource } from 'typeorm';
 import { GeminiService } from 'src/common/llm/gemini.service';
+import { Document } from 'src/database/entities/document.entity';
+import {
+  LLM_GENERATION_SERVICE,
+  type LlmGenerationService,
+} from 'src/common/llm/llm-generation.types';
 import { DocumentAskHistory } from 'src/database/entities/document-ask-history.entity';
 import { DocumentAskHistoryRepository } from 'src/database/repositories/document-ask-history.repository';
+import {
+  RawRow,
+  runRawQuery,
+  readRequiredString,
+  readString,
+  readNumber,
+  readNullableNumber,
+} from 'src/common/utils/raw-query.util';
+import {
+  normalizeConversationText,
+  truncateConversationText,
+  toVectorSql,
+} from '../shared-rag.util';
+import {
+  DEFAULT_RETRIEVAL_LIMIT,
+  SEMANTIC_SCORE_THRESHOLD,
+  SOURCE_SNIPPET_LENGTH,
+  RECENT_ASK_HISTORY_TURNS,
+  MAX_DOCUMENT_ASK_HISTORY_ITEMS,
+  STUDY_GPS_RECENT_CONTEXT_TURNS,
+} from '../constants';
 import { RagDocumentContextService } from './rag-document-context.service';
 import { RagIndexingService } from './rag-indexing.service';
 import {
@@ -13,21 +44,30 @@ import {
   RagSource,
   StudyGpsDayChatMessage,
 } from '../types/rag.types';
+import type { RagAskMode } from '../dtos/ask-rag.dto';
 
-const DEFAULT_RETRIEVAL_LIMIT = 8;
-const SOURCE_SNIPPET_LENGTH = 280;
-const RECENT_ASK_HISTORY_TURNS = 4;
-const MAX_DOCUMENT_ASK_HISTORY_ITEMS = 6;
-const RECENT_ANSWER_CONTEXT_LENGTH = 280;
+const DOCUMENT_STRICT_PROMPT = [
+  'You are an academic assistant inside a document workspace.',
+  'Answer using ONLY the provided document context.',
+  'If the context does not contain enough evidence, say that the document context is not sufficient.',
+  'Do not use outside knowledge.',
+].join('\n');
 
-const ANSWER_PROMPT = [
+const DOCUMENT_ASSISTED_PROMPT = [
+  'Use the document context first.',
+  'You may add general knowledge only after clearly separating it from document-grounded facts.',
+].join('\n');
+
+const GENERAL_CHAT_PROMPT = [
+  'Answer as a general assistant. Document context is not required.',
+].join('\n');
+
+const ANSWER_PROMPT_TEMPLATE = [
   'You are a helpful AI assistant inside a document workspace.',
+  '{modeInstructions}',
   'Respond naturally, like a real chat assistant, not like a rigid template.',
-  'You may use your general knowledge to answer the user.',
-  'If the optional document context is relevant, use it as additional knowledge and blend it naturally into the answer.',
-  'If the optional document context is not relevant, ignore it.',
-  'If the user is clearly asking about the current document but the provided context is too weak, say that naturally without using formulaic refusal wording.',
   'Do not mention internal prompting, retrieval, or hidden context unless the user asks.',
+  'Never mention chunk numbers, similarity scores, embeddings, source indexes, retrieval IDs, or other implementation details.',
   'Format the answer in clean Markdown.',
   'Use short paragraphs and bullet lists when they improve readability.',
   'Bold only the most important keywords, concepts, formulas, and conclusions.',
@@ -44,7 +84,7 @@ const ANSWER_PROMPT = [
   'Question:',
   '{question}',
   '',
-  'Optional document context:',
+  'Document context:',
   '{context}',
 ].join('\n');
 
@@ -62,16 +102,18 @@ type RetrievedChunkRow = {
   score: number;
 };
 
-type RawRow = Record<string, unknown>;
-
 @Injectable()
 export class RagQuestionAnsweringService {
-  private readonly answerPrompt = PromptTemplate.fromTemplate(ANSWER_PROMPT);
+  private readonly answerPrompt = PromptTemplate.fromTemplate(
+    ANSWER_PROMPT_TEMPLATE,
+  );
   private readonly logger = new Logger(RagQuestionAnsweringService.name);
 
   constructor(
     private readonly dataSource: DataSource,
     private readonly geminiService: GeminiService,
+    @Inject(LLM_GENERATION_SERVICE)
+    private readonly generationService: LlmGenerationService,
     private readonly documentAskHistoryRepository: DocumentAskHistoryRepository,
     private readonly ragDocumentContextService: RagDocumentContextService,
     private readonly ragIndexingService: RagIndexingService,
@@ -81,6 +123,7 @@ export class RagQuestionAnsweringService {
     documentId: string,
     ownerId: string,
     question: string,
+    mode: RagAskMode = 'document_strict',
   ): Promise<RagAnswerResponse & { historyItem: AskHistoryItem }> {
     const trimmedQuestion = question.trim();
 
@@ -88,11 +131,15 @@ export class RagQuestionAnsweringService {
       throw new BadRequestException('Question is required');
     }
 
-    await this.ragDocumentContextService.ensureOwnedDocument(
+    const document = await this.ragDocumentContextService.ensureOwnedDocument(
       documentId,
       ownerId,
     );
-    await this.ragIndexingService.ensureDocumentIndexed(documentId);
+
+    if (mode !== 'general_chat') {
+      await this.ragIndexingService.ensureDocumentIndexed(documentId);
+    }
+
     const recentHistory = await this.getRecentHistorySafe(documentId, ownerId);
 
     const result = await this.answerFromRelevantChunks(
@@ -101,8 +148,9 @@ export class RagQuestionAnsweringService {
       { scopedFolderId: null },
       {
         documentId,
-        scopeLabel: `Document ${documentId}`,
+        scopeLabel: document.title || 'Current document',
         recentHistory,
+        mode,
       },
     );
 
@@ -186,11 +234,11 @@ export class RagQuestionAnsweringService {
       }),
     );
 
-    const studyContext = this.normalizeConversationText(options.studyContext);
+    const studyContext = normalizeConversationText(options.studyContext);
     const retrievalQuestion = [studyContext, trimmedQuestion]
       .filter(Boolean)
       .join('\n\n');
-    const retrievedChunks = await this.retrieveRelevantChunks(
+    const retrievedChunks = await this.retrieveRelevantChunksWithFallback(
       retrievalQuestion,
       ownerId,
       { scopedFolderId: null },
@@ -207,6 +255,7 @@ export class RagQuestionAnsweringService {
         options.recentMessages ?? [],
       ),
       studyContext,
+      'document_assisted',
     );
 
     return {
@@ -220,12 +269,15 @@ export class RagQuestionAnsweringService {
     chunks: RetrievedChunkRow[],
     scopeLabel: string,
     recentHistory: DocumentAskHistory[],
+    mode: RagAskMode,
   ): Promise<string> {
     return this.answerQuestionWithConversation(
       question,
       chunks,
       scopeLabel,
       this.buildRecentConversationContext(recentHistory),
+      '',
+      mode,
     );
   }
 
@@ -235,20 +287,22 @@ export class RagQuestionAnsweringService {
     scopeLabel: string,
     recentConversation: string,
     contextPrefix = '',
+    mode: RagAskMode = 'document_assisted',
   ): Promise<string> {
     const chunkContext =
       chunks.length > 0
         ? chunks
-            .map((chunk, index) =>
+            .map((chunk) =>
               [
-                `[${index + 1}] Document: ${chunk.documentName}`,
-                `Chunk: ${chunk.chunkIndex}`,
-                `Similarity: ${chunk.score.toFixed(3)}`,
-                `Snippet: ${chunk.chunkText}`,
+                `Document: ${chunk.documentName}`,
+                chunk.pageNumber ? `Page: ${chunk.pageNumber}` : null,
+                `Excerpt: ${chunk.chunkText}`,
               ].join('\n'),
             )
             .join('\n\n')
-        : 'No relevant document context was retrieved for this question.';
+        : mode === 'general_chat'
+          ? 'Document context is not used in general chat mode.'
+          : 'No relevant document context was retrieved for this question.';
     const context = [contextPrefix, chunkContext]
       .map((item) => item.trim())
       .filter(Boolean)
@@ -275,8 +329,9 @@ export class RagQuestionAnsweringService {
       currentDate,
       currentTime,
       recentConversation,
+      modeInstructions: this.getModeInstructions(mode),
     });
-    const answer = await this.geminiService.generateText(prompt);
+    const answer = await this.generationService.generateText(prompt);
 
     return answer.trim();
   }
@@ -290,23 +345,38 @@ export class RagQuestionAnsweringService {
       limit?: number;
       scopeLabel: string;
       recentHistory: DocumentAskHistory[];
+      mode: RagAskMode;
     },
   ): Promise<RagAnswerResponse> {
-    const retrievedChunks = await this.retrieveRelevantChunks(
-      question,
-      ownerId,
-      scope,
-      {
-        documentId: options.documentId,
-        limit: options.limit ?? DEFAULT_RETRIEVAL_LIMIT,
-      },
-    );
+    const retrievedChunks =
+      options.mode === 'general_chat'
+        ? []
+        : await this.retrieveRelevantChunksWithFallback(
+            question,
+            ownerId,
+            scope,
+            {
+              documentId: options.documentId,
+              limit: options.limit ?? DEFAULT_RETRIEVAL_LIMIT,
+            },
+          );
+
+    if (
+      options.mode === 'document_strict' &&
+      !this.hasSufficientDocumentEvidence(retrievedChunks)
+    ) {
+      return {
+        answer: this.buildInsufficientDocumentContextAnswer(question),
+        sources: [],
+      };
+    }
 
     const answer = await this.answerQuestion(
       question,
       retrievedChunks,
       options.scopeLabel,
       options.recentHistory,
+      options.mode,
     );
 
     return {
@@ -326,7 +396,7 @@ export class RagQuestionAnsweringService {
     } = {},
   ): Promise<RetrievedChunkRow[]> {
     const queryEmbedding = await this.geminiService.createEmbedding(question);
-    const queryEmbeddingSql = this.toVectorSql(queryEmbedding);
+    const queryEmbeddingSql = toVectorSql(queryEmbedding);
     const params: unknown[] = [queryEmbeddingSql, ownerId];
     const whereClauses = ['ud.user_id = $2', 'c.embedding IS NOT NULL'];
 
@@ -350,7 +420,8 @@ export class RagQuestionAnsweringService {
     params.push(options.limit ?? DEFAULT_RETRIEVAL_LIMIT);
     const limitPlaceholder = `$${params.length}`;
 
-    const rows = await this.runRawQuery(
+    const rows = await runRawQuery(
+      this.dataSource,
       `
         SELECT
           d.id AS "documentId",
@@ -372,6 +443,164 @@ export class RagQuestionAnsweringService {
     );
 
     return rows.map((row) => this.mapRetrievedChunkRow(row));
+  }
+
+  private async retrieveRelevantChunksWithFallback(
+    question: string,
+    ownerId: string,
+    scope: RetrievalScope,
+    options: {
+      documentId?: string;
+      documentIds?: string[];
+      limit?: number;
+    } = {},
+  ): Promise<RetrievedChunkRow[]> {
+    try {
+      return await this.retrieveRelevantChunks(
+        question,
+        ownerId,
+        scope,
+        options,
+      );
+    } catch (error) {
+      if (!this.isEmbeddingRetrievalUnavailable(error)) {
+        throw error;
+      }
+
+      this.logger.warn(
+        `Semantic retrieval failed; falling back to local text chunk selection: ${this.toErrorMessage(
+          error,
+        )}`,
+      );
+
+      const documents = await this.resolveFallbackDocuments(ownerId, options);
+
+      if (documents.length === 0) {
+        return [];
+      }
+
+      return this.retrieveRelevantChunksLocally(
+        documents,
+        question,
+        options.limit ?? DEFAULT_RETRIEVAL_LIMIT,
+      );
+    }
+  }
+
+  private async resolveFallbackDocuments(
+    ownerId: string,
+    options: {
+      documentId?: string;
+      documentIds?: string[];
+    },
+  ): Promise<Document[]> {
+    const documentIds = [
+      ...(options.documentId ? [options.documentId] : []),
+      ...(options.documentIds ?? []),
+    ].filter(Boolean);
+    const uniqueDocumentIds = [...new Set(documentIds)];
+
+    return Promise.all(
+      uniqueDocumentIds.map((documentId) =>
+        this.ragDocumentContextService.ensureOwnedDocument(documentId, ownerId),
+      ),
+    );
+  }
+
+  private async retrieveRelevantChunksLocally(
+    documents: Document[],
+    question: string,
+    limit: number,
+  ): Promise<RetrievedChunkRow[]> {
+    const safeLimit = Math.max(1, limit);
+    const perDocumentLimit = Math.max(
+      1,
+      Math.ceil(safeLimit / Math.max(documents.length, 1)),
+    );
+    const chunkGroups = await Promise.all(
+      documents.map(async (document) => ({
+        document,
+        chunks: await this.ragDocumentContextService.getRelevantChunks(
+          document.id,
+          question,
+          perDocumentLimit,
+        ),
+      })),
+    );
+
+    return chunkGroups
+      .flatMap(({ document, chunks }) =>
+        chunks.map((chunk) => ({
+          documentId: document.id,
+          documentName: document.title || 'Untitled document',
+          chunkIndex: chunk.chunkIndex,
+          pageNumber: chunk.pageNumber,
+          snippet: chunk.chunkText.slice(0, SOURCE_SNIPPET_LENGTH),
+          chunkText: chunk.chunkText,
+          score: 0,
+        })),
+      )
+      .slice(0, safeLimit);
+  }
+
+  private isEmbeddingRetrievalUnavailable(error: unknown): boolean {
+    if (error instanceof ServiceUnavailableException) {
+      return true;
+    }
+
+    const message = this.toErrorMessage(error).toLowerCase();
+
+    return [
+      'fetch failed',
+      'failed sending request',
+      'network',
+      'timeout',
+      'econnreset',
+      'etimedout',
+      'unavailable',
+      'quota',
+      'rate limit',
+    ].some((token) => message.includes(token));
+  }
+
+  private toErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return String(error);
+  }
+
+  private hasSufficientDocumentEvidence(chunks: RetrievedChunkRow[]): boolean {
+    return chunks.some(
+      (chunk) =>
+        chunk.score >= SEMANTIC_SCORE_THRESHOLD &&
+        chunk.chunkText.trim().length >= 40,
+    );
+  }
+
+  private buildInsufficientDocumentContextAnswer(question: string): string {
+    return this.looksVietnamese(question)
+      ? 'Mình chưa có đủ bằng chứng trong ngữ cảnh tài liệu để trả lời chắc chắn câu hỏi này.'
+      : 'The document context is not sufficient to answer this question with reliable evidence.';
+  }
+
+  private looksVietnamese(value: string): boolean {
+    return /[ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/i.test(
+      value,
+    );
+  }
+
+  private getModeInstructions(mode: RagAskMode): string {
+    if (mode === 'document_strict') {
+      return DOCUMENT_STRICT_PROMPT;
+    }
+
+    if (mode === 'document_assisted') {
+      return DOCUMENT_ASSISTED_PROMPT;
+    }
+
+    return GENERAL_CHAT_PROMPT;
   }
 
   private toSources(chunks: RetrievedChunkRow[]): RagSource[] {
@@ -405,10 +634,8 @@ export class RagQuestionAnsweringService {
     const conversationBlocks = [...entries]
       .reverse()
       .map((entry) => {
-        const normalizedQuestion = this.normalizeConversationText(
-          entry.question,
-        );
-        const normalizedAnswer = this.truncateConversationText(entry.answer);
+        const normalizedQuestion = normalizeConversationText(entry.question);
+        const normalizedAnswer = truncateConversationText(entry.answer);
 
         if (!normalizedQuestion && !normalizedAnswer) {
           return '';
@@ -436,10 +663,10 @@ export class RagQuestionAnsweringService {
     }
 
     const conversationBlocks = entries
-      .slice(-8)
+      .slice(-STUDY_GPS_RECENT_CONTEXT_TURNS)
       .map((entry) => {
         const role = entry.role === 'assistant' ? 'Assistant' : 'User';
-        const content = this.truncateConversationText(entry.content);
+        const content = truncateConversationText(entry.content);
 
         return content ? `${role}: ${content}` : '';
       })
@@ -450,134 +677,16 @@ export class RagQuestionAnsweringService {
       : 'No recent conversation.';
   }
 
-  private toVectorSql(embedding: number[]): string {
-    return pgvector.toSql(embedding) as string;
-  }
-
-  private async runRawQuery(sql: string, params: unknown[]): Promise<RawRow[]> {
-    const result = (await this.dataSource.query(sql, params)) as unknown;
-
-    if (!Array.isArray(result)) {
-      return [];
-    }
-
-    return result.filter((row) => this.isRawRow(row));
-  }
-
-  private isRawRow(value: unknown): value is RawRow {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-  }
-
   private mapRetrievedChunkRow(row: RawRow): RetrievedChunkRow {
     return {
-      documentId: this.readRequiredString(row, 'documentId'),
-      documentName: this.readString(row, 'documentName', 'Untitled document'),
-      chunkIndex: this.readNumber(row, 'chunkIndex'),
-      pageNumber: this.readNullableNumber(row, 'pageNumber'),
-      snippet: this.readString(row, 'snippet'),
-      chunkText: this.readString(row, 'chunkText'),
-      score: this.readNumber(row, 'score'),
+      documentId: readRequiredString(row, 'documentId'),
+      documentName: readString(row, 'documentName', 'Untitled document'),
+      chunkIndex: readNumber(row, 'chunkIndex'),
+      pageNumber: readNullableNumber(row, 'pageNumber'),
+      snippet: readString(row, 'snippet'),
+      chunkText: readString(row, 'chunkText'),
+      score: readNumber(row, 'score'),
     };
-  }
-
-  private readRequiredString(row: RawRow, key: string): string {
-    const value = row[key];
-
-    if (typeof value === 'string' && value.trim()) {
-      return value;
-    }
-
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return String(value);
-    }
-
-    throw new Error(`Expected string value for ${key}`);
-  }
-
-  private readString(row: RawRow, key: string, fallback = ''): string {
-    const value = row[key];
-
-    if (typeof value === 'string') {
-      return value;
-    }
-
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return String(value);
-    }
-
-    return fallback;
-  }
-
-  private readNumber(row: RawRow, key: string, fallback = 0): number {
-    const value = row[key];
-
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-
-    if (typeof value === 'string') {
-      const parsed = Number(value);
-
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-
-    return fallback;
-  }
-
-  private readNullableNumber(row: RawRow, key: string): number | null {
-    const value = row[key];
-
-    if (value === null || value === undefined) {
-      return null;
-    }
-
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-
-    if (typeof value === 'string') {
-      const parsed = Number(value);
-
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-
-    return null;
-  }
-
-  private truncateConversationText(value: unknown): string {
-    const normalizedValue = this.normalizeConversationText(value);
-
-    if (normalizedValue.length <= RECENT_ANSWER_CONTEXT_LENGTH) {
-      return normalizedValue;
-    }
-
-    const roughSlice = normalizedValue
-      .slice(0, RECENT_ANSWER_CONTEXT_LENGTH)
-      .trimEnd();
-    const lastWordBoundary = roughSlice.lastIndexOf(' ');
-    const safeSlice =
-      lastWordBoundary > Math.floor(RECENT_ANSWER_CONTEXT_LENGTH / 2)
-        ? roughSlice.slice(0, lastWordBoundary)
-        : roughSlice;
-
-    return `${safeSlice}...`;
-  }
-
-  private normalizeConversationText(value: unknown): string {
-    const rawValue =
-      typeof value === 'string'
-        ? value
-        : typeof value === 'number' ||
-            typeof value === 'boolean' ||
-            typeof value === 'bigint'
-          ? String(value)
-          : '';
-
-    return rawValue.replace(/\s+/g, ' ').trim();
   }
 
   private async getRecentHistorySafe(

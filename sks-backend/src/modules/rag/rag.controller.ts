@@ -14,16 +14,16 @@ import {
 } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
 import { AskRagDto } from './dtos/ask-rag.dto';
-import { GenerateMindMapDto } from './dtos/generate-mind-map.dto';
-import { GenerateMindMapNodeNoteDto } from './dtos/generate-mind-map-node-note.dto';
+import { GenerateQuizDto } from './dtos/generate-quiz.dto';
 import { GenerateSummaryDto } from './dtos/generate-summary.dto';
 import {
   GenerateStudyGpsDayChatDto,
   StartStudyGpsDayChatDto,
 } from './dtos/generate-study-gps-day-chat.dto';
 import { GenerateStudyGpsDto } from './dtos/generate-study-gps.dto';
+import { QuizChatDto } from './dtos/quiz-chat.dto';
 import { RagService } from './rag.service';
-import { RagMindMapService } from './services/rag-mind-map.service';
+import { RagQuizService } from './services/rag-quiz.service';
 import { RagStudyGpsService } from './services/rag-study-gps.service';
 import { RagSummaryService } from './services/rag-summary.service';
 import { JwtAuthGuard } from '../authentication/jwt/jwt-auth.guard';
@@ -33,9 +33,9 @@ import { JwtAuthGuard } from '../authentication/jwt/jwt-auth.guard';
 export class RagController {
   constructor(
     private readonly ragService: RagService,
-    private readonly ragMindMapService: RagMindMapService,
     private readonly ragSummaryService: RagSummaryService,
     private readonly ragStudyGpsService: RagStudyGpsService,
+    private readonly ragQuizService: RagQuizService,
   ) {}
 
   private getUserId(req: ExpressRequest) {
@@ -161,6 +161,67 @@ export class RagController {
   }
 
   @HttpCode(HttpStatus.OK)
+  @Post('quiz/generate')
+  async generateQuiz(
+    @Body() body: GenerateQuizDto,
+    @Request() req: ExpressRequest,
+  ) {
+    const ownerId = this.getUserId(req);
+    const result = await this.ragQuizService.generateQuiz({
+      ...body,
+      ownerId,
+    });
+
+    return {
+      message: 'Quiz generated successfully',
+      ...result,
+    };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Get('quiz/chat/history')
+  async getQuizChatHistory(@Request() req: ExpressRequest) {
+    const ownerId = this.getUserId(req);
+    const items = await this.ragQuizService.getQuizChatHistory(ownerId);
+
+    return {
+      message: 'Quiz chat history retrieved successfully',
+      items,
+    };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('quiz/chat')
+  async sendQuizChatMessage(
+    @Body() body: QuizChatDto,
+    @Request() req: ExpressRequest,
+  ) {
+    const ownerId = this.getUserId(req);
+    const result = await this.ragQuizService.sendQuizChatMessage(
+      ownerId,
+      body.documentIds,
+      body.question,
+    );
+
+    return {
+      message: 'Quiz chat answered successfully',
+      ...result,
+    };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Delete('quiz/chat/history')
+  async clearQuizChatHistory(@Request() req: ExpressRequest) {
+    const ownerId = this.getUserId(req);
+    const cleared = await this.ragQuizService.clearQuizChatHistory(ownerId);
+
+    return {
+      message: 'Quiz chat history cleared successfully',
+      cleared,
+    };
+  }
+
+  @HttpCode(HttpStatus.OK)
   @Post('documents/:documentId/ask')
   async askDocument(
     @Param('documentId', ParseUUIDPipe) documentId: string,
@@ -172,6 +233,7 @@ export class RagController {
       documentId,
       ownerId,
       dto.question,
+      dto.mode ?? 'document_strict',
     );
 
     return {
@@ -235,74 +297,6 @@ export class RagController {
 
     return {
       message: 'Document summary generated successfully',
-      ...result,
-    };
-  }
-
-  @HttpCode(HttpStatus.OK)
-  @Post('documents/:documentId/mindmap')
-  async getDocumentMindMap(
-    @Param('documentId', ParseUUIDPipe) documentId: string,
-    @Body() body: GenerateMindMapDto,
-    @Request() req: ExpressRequest,
-  ) {
-    const ownerId = this.getUserId(req);
-    const result = await this.ragMindMapService.getDocumentMindMap(
-      documentId,
-      ownerId,
-      body?.language ?? 'en',
-      body?.forceRefresh ?? false,
-      body?.instruction,
-      body?.slot,
-    );
-
-    return {
-      message: 'Document mind map generated successfully',
-      ...result,
-    };
-  }
-
-  @HttpCode(HttpStatus.OK)
-  @Post('documents/:documentId/mindmap/node-note')
-  async generateMindMapNodeStudyNote(
-    @Param('documentId', ParseUUIDPipe) documentId: string,
-    @Body() body: GenerateMindMapNodeNoteDto,
-    @Request() req: ExpressRequest,
-  ) {
-    const ownerId = this.getUserId(req);
-    const result = await this.ragMindMapService.generateMindMapNodeStudyNote(
-      documentId,
-      ownerId,
-      {
-        language: body.language ?? 'en',
-        label: body.label,
-        summary: body.summary,
-        pathLabels: body.pathLabels,
-        childLabels: body.childLabels,
-        siblingLabels: body.siblingLabels,
-      },
-    );
-
-    return {
-      message: 'Mind map node study note generated successfully',
-      ...result,
-    };
-  }
-
-  @HttpCode(HttpStatus.OK)
-  @Post('documents/:documentId/diagram')
-  async getDocumentDiagram(
-    @Param('documentId', ParseUUIDPipe) documentId: string,
-    @Request() req: ExpressRequest,
-  ) {
-    const ownerId = this.getUserId(req);
-    const result = await this.ragService.getDocumentDiagram(
-      documentId,
-      ownerId,
-    );
-
-    return {
-      message: 'Document diagram generated successfully',
       ...result,
     };
   }

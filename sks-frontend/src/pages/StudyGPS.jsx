@@ -246,29 +246,29 @@ const cleanDisplayText = (value) =>
       )
       .replace(
         /\b(?:tài\s+liệu\s+của|file|document)\s+['"][^'"]+\.(?:pdf|docx?|pptx?|txt)['"]/gi,
-        "tài liệu",
+        "the document",
       )
       .replace(
         /\s+(?:in|from|inside|within|trong|theo)\s+['"]?\bStudy\s+parts?\s*\d+\b['"]?/gi,
         "",
       )
-      .replace(/['"]?\bStudy\s+parts?\s*\d+\b['"]?/gi, "tài liệu")
-      .replace(/\bStudy\s+parts?\b/gi, "tài liệu")
-      .replace(/\bselected\s+sections?\b/gi, "tài liệu")
-      .replace(/\b(?:excerpt|reference)\s*#?\d+\b/gi, "tài liệu")
-      .replace(/\bsource\s+chunks?\s*#?\d*\b/gi, "tài liệu")
-      .replace(/\bchunks?\s*#?\d+\b/gi, "tài liệu")
-      .replace(/\brelevant\s+parts?\b/gi, "tài liệu")
-      .replace(/\bchunks?\b/gi, "tài liệu")
+      .replace(/['"]?\bStudy\s+parts?\s*\d+\b['"]?/gi, "the document")
+      .replace(/\bStudy\s+parts?\b/gi, "the document")
+      .replace(/\bselected\s+sections?\b/gi, "the document")
+      .replace(/\b(?:excerpt|reference)\s*#?\d+\b/gi, "the document")
+      .replace(/\bsource\s+chunks?\s*#?\d*\b/gi, "the document")
+      .replace(/\bchunks?\s*#?\d+\b/gi, "the document")
+      .replace(/\brelevant\s+parts?\b/gi, "the document")
+      .replace(/\bchunks?\b/gi, "the document")
       .replace(/\bembeddings?\b/gi, "")
       .replace(/\bvectors?\b/gi, "")
-      .replace(/\braw\s+context\b/gi, "tài liệu")
-      .replace(/\btài liệu\s+và\s+tài liệu\b/gi, "tài liệu")
-      .replace(/\btài liệu\s*,\s*tài liệu\b/gi, "tài liệu")
+      .replace(/\braw\s+context\b/gi, "the document")
+      .replace(/\btài liệu\s+và\s+tài liệu\b/gi, "the document")
+      .replace(/\btài liệu\s*,\s*tài liệu\b/gi, "the document")
       .replace(/^Đọc\s+(?:kỹ\s+)?tài liệu\s+và\s+/i, "")
       .replace(/^Đọc\s+tài liệu\s+để\s+/i, "")
       .replace(/^Nghiên cứu\s+tài liệu\s+(?:để\s+)?/i, "")
-      .replace(/^Phân tích\s+tài liệu\s+về\s+/i, "Phân tích ")
+      .replace(/^Phân tích\s+tài liệu\s+về\s+/i, "")
       .replace(/^và\s+/i, "")
       .replace(/^and\s+/i, ""),
   );

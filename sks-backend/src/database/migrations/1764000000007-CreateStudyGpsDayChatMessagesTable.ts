@@ -6,9 +6,7 @@ import {
   TableIndex,
 } from 'typeorm';
 
-export class CreateStudyGpsDayChatMessagesTable1764000000007
-  implements MigrationInterface
-{
+export class CreateStudyGpsDayChatMessagesTable1764000000007 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.createTable(
       new Table({
@@ -60,9 +58,7 @@ export class CreateStudyGpsDayChatMessagesTable1764000000007
       true,
     );
 
-    const chatTable = await queryRunner.getTable(
-      'study_gps_day_chat_messages',
-    );
+    const chatTable = await queryRunner.getTable('study_gps_day_chat_messages');
 
     if (
       !chatTable?.foreignKeys.some((foreignKey) =>
@@ -106,19 +102,13 @@ export class CreateStudyGpsDayChatMessagesTable1764000000007
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    const chatTable = await queryRunner.getTable(
-      'study_gps_day_chat_messages',
-    );
+    const chatTable = await queryRunner.getTable('study_gps_day_chat_messages');
     const planDayIndex = chatTable?.indices.find(
-      (index) =>
-        index.name === 'IDX_study_gps_day_chat_messages_plan_day',
+      (index) => index.name === 'IDX_study_gps_day_chat_messages_plan_day',
     );
 
     if (planDayIndex) {
-      await queryRunner.dropIndex(
-        'study_gps_day_chat_messages',
-        planDayIndex,
-      );
+      await queryRunner.dropIndex('study_gps_day_chat_messages', planDayIndex);
     }
 
     for (const foreignKey of chatTable?.foreignKeys ?? []) {

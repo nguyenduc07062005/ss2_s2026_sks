@@ -4,11 +4,6 @@ describe('RagArtifactCacheService', () => {
   type UpdatePayload = Record<string, unknown>;
   type UpdateMock = jest.Mock<Promise<void>, [string, UpdatePayload]>;
 
-  const documentRepository = {
-    getRepository: jest.fn(() => ({
-      update: jest.fn<Promise<void>, [string, Record<string, unknown>]>(),
-    })),
-  };
   const userDocumentRepository = {
     getRepository: jest.fn(() => ({
       update: jest.fn<Promise<void>, [string, Record<string, unknown>]>(),
@@ -28,17 +23,7 @@ describe('RagArtifactCacheService', () => {
     userDocumentRepository.getRepository.mockReturnValue({
       update: updateUserDocument,
     });
-    documentRepository.getRepository.mockReturnValue({
-      update: jest.fn((id: string, payload: UpdatePayload) => {
-        void id;
-        void payload;
-        return Promise.resolve(undefined);
-      }),
-    });
-    service = new RagArtifactCacheService(
-      documentRepository as never,
-      userDocumentRepository as never,
-    );
+    service = new RagArtifactCacheService(userDocumentRepository as never);
   });
 
   it('merges user-level and fallback document-level summary versions', () => {
@@ -187,5 +172,80 @@ describe('RagArtifactCacheService', () => {
     expect(customVersion?.slot).toBe('custom');
     expect(customVersion?.title).toBe('Custom summary');
     expect(customVersion?.body).toBe('Custom summary body.');
+  });
+
+  it('stores and reads a keyed artifact without dropping legacy summary state', async () => {
+    const userDocument = {
+      id: 'user-doc-1',
+      extraAttributes: {
+        aiArtifacts: {
+          summaryByLanguage: {
+            en: {
+              activeSlot: 'default',
+              versions: {
+                default: {
+                  title: 'Legacy summary',
+                  overview: 'Legacy overview.',
+                  key_points: ['Legacy point'],
+                  conclusion: 'Legacy conclusion.',
+                  language: 'en',
+                  generatedAt: '2026-05-06T00:00:00.000Z',
+                  sources: [],
+                  slot: 'default',
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    await service.writeArtifact(userDocument as never, {
+      activeSelector: 'summary:en:custom',
+      artifact: {
+        key: 'cache-key-1',
+        artifactType: 'summary',
+        language: 'en',
+        mode: 'custom',
+        documentId: 'doc-1',
+        contentHash: 'hash-1',
+        instructionHash: 'instruction-hash-1',
+        artifactVersion: 3,
+        generatedAt: '2026-05-06T01:00:00.000Z',
+        payload: { title: 'Custom summary' },
+      },
+    });
+
+    const persistedPatch = updateUserDocument.mock.calls[0]?.[1];
+    const extraAttributes = persistedPatch?.extraAttributes as
+      | Record<string, unknown>
+      | undefined;
+    const aiArtifacts = extraAttributes?.aiArtifacts as
+      | Record<string, unknown>
+      | undefined;
+    const summaryByLanguage = aiArtifacts?.summaryByLanguage as
+      | Record<string, unknown>
+      | undefined;
+    const artifactsByKey = aiArtifacts?.artifactsByKey as
+      | Record<string, unknown>
+      | undefined;
+    const activeArtifactKeys = aiArtifacts?.activeArtifactKeys as
+      | Record<string, unknown>
+      | undefined;
+
+    expect(summaryByLanguage?.en).toBeDefined();
+    expect(artifactsByKey?.['cache-key-1']).toEqual(
+      expect.objectContaining({
+        key: 'cache-key-1',
+        payload: { title: 'Custom summary' },
+      }),
+    );
+    expect(activeArtifactKeys?.['summary:en:custom']).toBe('cache-key-1');
+    expect(service.readArtifact(userDocument as never, 'cache-key-1')).toEqual(
+      expect.objectContaining({
+        key: 'cache-key-1',
+        payload: { title: 'Custom summary' },
+      }),
+    );
   });
 });
