@@ -22,7 +22,7 @@ services:
       - key: DATABASE_LOGGING
         value: "false"
       - key: CORS_ORIGIN
-        value: https://smartknowledge.onrender.com,https://sks-s2026-frontend.onrender.com
+        value: https://smartknowledge.onrender.com
       - key: JWT_SECRET
         sync: false
       - key: JWT_EXPIRES_IN
@@ -39,7 +39,7 @@ services:
         value: mimo-v2.5-pro
 
   - type: web
-    name: sks-s2026-frontend
+    name: smartknowledge
     runtime: static
     rootDir: sks-frontend
     buildCommand: npm ci --include=dev && npm run build
