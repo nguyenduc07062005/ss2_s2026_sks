@@ -22,7 +22,7 @@ services:
       - key: DATABASE_LOGGING
         value: "false"
       - key: CORS_ORIGIN
-        value: https://sks-s2026-frontend.onrender.com
+        value: https://smartknowledge.onrender.com,https://sks-s2026-frontend.onrender.com
       - key: JWT_SECRET
         sync: false
       - key: JWT_EXPIRES_IN
