@@ -34,7 +34,7 @@ services:
       - key: MIMO_API_KEY
         sync: false
       - key: MIMO_BASE_URL
-        value: https://api.xiaomimimo.com/v1
+        value: https://token-plan-sgp.xiaomimimo.com/v1
       - key: MIMO_MODEL
         value: mimo-v2.5-pro
 
