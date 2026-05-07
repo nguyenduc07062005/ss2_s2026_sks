@@ -271,8 +271,8 @@ const QuizConfigModal = ({ open, documents, form, selectedDocumentIds, generatin
   const handleSubmit = (e) => { setDropdownOpen(false); setDocQuery(""); onSubmit(e); };
 
   return (
-    <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-md">
-      <form onSubmit={handleSubmit} className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-[32px] border border-white/20 bg-white shadow-2xl">
+    <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-md sm:p-4">
+      <form onSubmit={handleSubmit} className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-[24px] border border-white/20 bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-[32px]">
         {/* Header */}
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-100 px-5">
           <div className="flex items-center gap-3">
@@ -291,7 +291,7 @@ const QuizConfigModal = ({ open, documents, form, selectedDocumentIds, generatin
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+        <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
           {error && (
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</div>
           )}
@@ -381,7 +381,7 @@ const QuizConfigModal = ({ open, documents, form, selectedDocumentIds, generatin
             <p className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
               <FlameIcon className="h-3.5 w-3.5" />Difficulty
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {DIFFICULTIES.map((d) => {
                 const sel = form.difficulty === d.value;
                 const colorMap = { easy: "border-emerald-300 bg-emerald-50 text-emerald-700 shadow-emerald-100", medium: "border-amber-300 bg-amber-50 text-amber-700 shadow-amber-100", hard: "border-rose-300 bg-rose-50 text-rose-700 shadow-rose-100" };
@@ -414,8 +414,8 @@ const QuizConfigModal = ({ open, documents, form, selectedDocumentIds, generatin
         </div>
 
         {/* Footer */}
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/80 px-5 py-4">
-          <div className={`flex h-10 items-center gap-2 rounded-2xl px-3 text-xs font-black ${selectedCount > 0 ? "bg-cyan-50 text-cyan-700" : "bg-slate-100 text-slate-400"}`}>
+        <div className="flex shrink-0 flex-col items-stretch justify-between gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
+          <div className={`flex h-10 items-center justify-center gap-2 rounded-2xl px-3 text-xs font-black sm:justify-start ${selectedCount > 0 ? "bg-cyan-50 text-cyan-700" : "bg-slate-100 text-slate-400"}`}>
             <FileIcon className="h-4 w-4" />{selectedCount}/8
           </div>
           <button type="submit" disabled={generating || selectedCount === 0}
@@ -467,7 +467,7 @@ const QuizPanel = ({ quizState, questions, activeQuestion, activeAnswer, activeQ
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-600">
             Question {activeQuestionIndex + 1} / {questions.length}
           </p>
-          <div className="mt-2 h-1.5 w-40 overflow-hidden rounded-full bg-slate-100">
+          <div className="mt-2 h-1.5 w-full min-w-[10rem] overflow-hidden rounded-full bg-slate-100 sm:w-40">
             <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all"
               style={{ width: `${((activeQuestionIndex + 1) / questions.length) * 100}%` }} />
           </div>
@@ -485,8 +485,8 @@ const QuizPanel = ({ quizState, questions, activeQuestion, activeAnswer, activeQ
         </div>
       </div>
 
-      <div className="p-5">
-        <h2 className="text-xl font-black leading-tight tracking-tight text-slate-950">{activeQuestion.question}</h2>
+      <div className="p-4 sm:p-5">
+        <h2 className="text-lg font-black leading-tight tracking-tight text-slate-950 sm:text-xl">{activeQuestion.question}</h2>
 
         <div className="mt-5 space-y-3">
           {activeQuestion.options.map((option) => {
@@ -527,11 +527,11 @@ const QuizPanel = ({ quizState, questions, activeQuestion, activeAnswer, activeQ
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <button type="button" onClick={onExplain} disabled={!activeAnswer || chatLoading}
-            className="flex items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.16em] text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40">
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.16em] text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto">
             <SparklesIcon className="h-3.5 w-3.5" />Explain
           </button>
           <button type="button" onClick={onNextQuestion} disabled={!activeAnswer}
-            className="flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-[11px] font-black uppercase tracking-[0.16em] text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40">
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-[11px] font-black uppercase tracking-[0.16em] text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto">
             {isLastQuestion ? "View Results" : "Next"}
             <ArrowRightIcon className="h-4 w-4" />
           </button>
@@ -779,7 +779,7 @@ const Quiz = () => {
           </div>
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-600">SKS Quiz</p>
-            <p className="text-xs font-bold text-slate-500 truncate max-w-[260px]">
+            <p className="max-w-[180px] truncate text-xs font-bold text-slate-500 sm:max-w-[260px]">
               {quizState.data.documents.map((d) => d.title).join(", ")}
             </p>
           </div>

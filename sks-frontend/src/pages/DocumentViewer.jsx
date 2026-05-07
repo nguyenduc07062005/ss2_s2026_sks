@@ -654,6 +654,31 @@ const DocumentViewer = () => {
   const isResizing = useRef(false);
   const containerRef = useRef(null);
   const aiPanelRef = useRef(null);
+  const compactSidebarAdjustedRef = useRef(false);
+  const [isCompactViewer, setIsCompactViewer] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const updateCompactViewer = () => setIsCompactViewer(mediaQuery.matches);
+
+    updateCompactViewer();
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", updateCompactViewer);
+      return () => mediaQuery.removeEventListener("change", updateCompactViewer);
+    }
+
+    mediaQuery.addListener(updateCompactViewer);
+    return () => mediaQuery.removeListener(updateCompactViewer);
+  }, []);
+
+  useEffect(() => {
+    if (!isCompactViewer || compactSidebarAdjustedRef.current) return;
+    compactSidebarAdjustedRef.current = true;
+    setSidebarOpen(false);
+  }, [isCompactViewer, setSidebarOpen]);
 
   /* Resize Handler */
   const handleMouseDown = useCallback((e) => {
@@ -2090,8 +2115,8 @@ const DocumentViewer = () => {
 
   const renderToolbar = () => {
     return (
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/80 px-6 backdrop-blur-xl transition-all">
-        <div className="flex items-center gap-6 min-w-0">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/80 px-3 backdrop-blur-xl transition-all sm:px-6">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-6">
           <button
             type="button"
             onClick={() => navigate("/app")}
@@ -2105,11 +2130,11 @@ const DocumentViewer = () => {
             </span>
           </button>
 
-          <div className="w-px h-6 bg-slate-200/80" />
+          <div className="hidden h-6 w-px bg-slate-200/80 sm:block" />
 
           {documentData && (
             <div className="min-w-0 flex flex-col">
-              <h1 className="truncate text-[15px] font-[1000] tracking-tight text-slate-910 max-w-[200px] md:max-w-md lg:max-w-lg">
+              <h1 className="max-w-[36vw] truncate text-[15px] font-[1000] tracking-tight text-slate-910 sm:max-w-[200px] md:max-w-md lg:max-w-lg">
                 {documentData.title}
               </h1>
               {documentData.folderName && (
@@ -2124,7 +2149,7 @@ const DocumentViewer = () => {
           )}
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-slate-100/50 border border-slate-200/40">
             <button
               onClick={handleOpenRawFile}
@@ -2157,7 +2182,7 @@ const DocumentViewer = () => {
             <button
               onClick={() => setSidebarOpen((v) => !v)}
               title={sidebarOpen ? "Close AI Assistant" : "Open AI Assistant"}
-              className={`group relative flex h-8 items-center gap-2 rounded-xl px-3.5 text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${
+              className={`group relative flex h-8 items-center gap-2 rounded-xl px-2.5 text-[10px] font-black uppercase tracking-widest transition-all duration-300 sm:px-3.5 ${
                 sidebarOpen
                   ? "bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-500 ring-1 ring-slate-200/60"
                   : "bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
@@ -2628,9 +2653,9 @@ const DocumentViewer = () => {
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-white">
-      <div ref={containerRef} className="flex-1 flex overflow-hidden min-h-0">
+      <div ref={containerRef} className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* PREVIEW CANVAS */}
-        <main className="relative flex-1 min-w-0 flex flex-col overflow-hidden bg-slate-50/30 border-r border-slate-200/60">
+        <main className={`${sidebarOpen && isCompactViewer ? "hidden" : "relative flex"} min-w-0 flex-1 flex-col overflow-hidden bg-slate-50/30 border-r border-slate-200/60`}>
           {/* INTERNAL DOCUMENT TOOLBAR (Inside Document Area only) */}
           {renderToolbar()}
 
@@ -2640,7 +2665,7 @@ const DocumentViewer = () => {
                 <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-100 border-t-cyan-600" />
               </div>
             ) : error ? (
-              <div className="flex h-full flex-col items-center justify-center p-20 text-center animate-fade-in shadow-inner bg-slate-50/10">
+              <div className="flex h-full flex-col items-center justify-center p-6 text-center animate-fade-in shadow-inner bg-slate-50/10 sm:p-20">
                 <div className="h-20 w-20 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mb-6">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -2665,7 +2690,7 @@ const DocumentViewer = () => {
             ) : docxHtml ? (
               <div className="h-full w-full overflow-auto bg-white">
                 <div
-                  className="docx-preview mx-auto max-w-3xl px-10 py-10"
+                  className="docx-preview mx-auto max-w-3xl px-5 py-6 sm:px-10 sm:py-10"
                   dangerouslySetInnerHTML={{ __html: docxHtml }}
                 />
               </div>
@@ -2676,7 +2701,7 @@ const DocumentViewer = () => {
                 title="Asset Preview"
               />
             ) : (
-              <div className="flex h-full flex-col items-center justify-center p-20 text-center animate-fade-in">
+              <div className="flex h-full flex-col items-center justify-center p-6 text-center animate-fade-in sm:p-20">
                 <div
                   className={`flex h-20 w-20 items-center justify-center rounded-2xl text-[12px] font-black tracking-[0.2em] shadow-xl mb-10 ${filePresentation.accent.replace("bg-teal-50", "bg-slate-900").replace("text-teal-700", "text-white")}`}
                 >
@@ -2689,7 +2714,7 @@ const DocumentViewer = () => {
                   Preview for this file type is not available here. Use the side
                   panel to read the summary or ask AI.
                 </p>
-                <div className="flex gap-4 justify-center">
+                <div className="flex flex-col justify-center gap-3 sm:flex-row sm:gap-4">
                   <button
                     onClick={() => handleOpenRawFile()}
                     className="rounded-2xl bg-slate-100 py-3.5 px-8 text-[10px] font-black uppercase tracking-wider text-slate-900 hover:bg-slate-200"
@@ -2711,7 +2736,7 @@ const DocumentViewer = () => {
         </main>
 
         {/* RESIZER */}
-        {sidebarOpen && (
+        {sidebarOpen && !isCompactViewer && (
           <div
             onMouseDown={handleMouseDown}
             className="w-px shrink-0 cursor-col-resize bg-slate-200 hover:bg-cyan-500 transition-colors relative z-30"
@@ -2723,16 +2748,20 @@ const DocumentViewer = () => {
         {/* SIDEBAR INTELLIGENCE */}
         {sidebarOpen && (
           <aside
-            className="shrink-0 flex flex-col overflow-hidden bg-white border-l border-slate-200 animate-in slide-in-from-right duration-500"
-            style={{
-              width: sidebarWidth,
-              minWidth: 360,
-              maxWidth: "65%",
-              height: "100%",
-            }}
+            className={`${isCompactViewer ? "absolute inset-0 z-40 w-full border-l-0" : "shrink-0 border-l"} flex flex-col overflow-hidden bg-white border-slate-200 animate-in slide-in-from-right duration-500`}
+            style={
+              isCompactViewer
+                ? { width: "100%", height: "100%" }
+                : {
+                    width: sidebarWidth,
+                    minWidth: 360,
+                    maxWidth: "65%",
+                    height: "100%",
+                  }
+            }
           >
             {/* Sidebar Header */}
-            <div className="shrink-0 px-6 py-4 border-b border-slate-100/60 bg-white/50 backdrop-blur-md">
+            <div className="shrink-0 border-b border-slate-100/60 bg-white/50 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20">
@@ -2783,8 +2812,8 @@ const DocumentViewer = () => {
               onScroll={handleAiPanelScroll}
               className={`flex-1 min-h-0 animate-soft-reveal scrollbar-none ${
                 activeTab === "ask" || activeTab === "note"
-                  ? "flex flex-col overflow-hidden px-6 pt-4 pb-0"
-                  : "overflow-y-auto px-6 py-5 pb-24"
+                  ? "flex flex-col overflow-hidden px-4 pt-4 pb-0 sm:px-6"
+                  : "overflow-y-auto px-4 py-4 pb-24 sm:px-6 sm:py-5"
               }`}
               key={activeTab}
             >

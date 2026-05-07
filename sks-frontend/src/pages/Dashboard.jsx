@@ -1261,7 +1261,7 @@ const Dashboard = () => {
         {/* PREMIUM HERO — dark gradient, animated glows, crisp    */}
         {/* ══════════════════════════════════════════════════════ */}
         {/* ═══ LIGHT PREMIUM HERO ═══ */}
-        <div className="relative mb-8 overflow-hidden rounded-[28px] border border-cyan-100 bg-gradient-to-br from-white via-cyan-50/60 to-blue-50 px-8 py-8 shadow-[0_8px_40px_-12px_rgba(14,165,233,0.25)]">
+        <div className="relative mb-8 overflow-hidden rounded-[24px] border border-cyan-100 bg-gradient-to-br from-white via-cyan-50/60 to-blue-50 px-4 py-6 shadow-[0_8px_40px_-12px_rgba(14,165,233,0.25)] sm:rounded-[28px] sm:px-8 sm:py-8">
           {/* Top accent line */}
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent" />
           {/* Decorative circles */}
@@ -1313,7 +1313,7 @@ const Dashboard = () => {
                     value={searchInput}
                     onChange={e => setSearchInput(e.target.value)}
                     placeholder="Search documents, folders, or topics with AI…"
-                    className="h-14 flex-1 bg-transparent text-[14px] font-medium text-slate-900 outline-none placeholder:text-slate-400"
+                    className="h-14 min-w-0 flex-1 bg-transparent pr-3 text-[14px] font-medium text-slate-900 outline-none placeholder:text-slate-400"
                   />
                   {/* Right: clear or Ctrl+K */}
                   {searchInput ? (
@@ -1333,19 +1333,19 @@ const Dashboard = () => {
             </div>
 
             {/* Right: Actions + Stats */}
-            <div className="flex shrink-0 flex-col items-start gap-4 lg:items-end">
-              <div className="flex items-center gap-2">
+            <div className="flex w-full shrink-0 flex-col items-stretch gap-4 lg:w-auto lg:items-end">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
                 <button type="button" onClick={() => setShowCreateFolderModal(true)}
-                  className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-700 shadow-sm hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700 transition-all">
+                  className="flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-700 shadow-sm transition-all hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700">
                   <FolderAddIcon className="h-4 w-4 text-cyan-500" />New Folder
                 </button>
                 <button type="button" onClick={() => setShowUploadModal(true)}
-                  className="flex h-10 items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 px-5 text-[13px] font-bold text-white shadow-lg shadow-cyan-500/30 hover:-translate-y-0.5 hover:shadow-cyan-500/45 active:scale-95 transition-all">
+                  className="flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 px-5 text-[13px] font-bold text-white shadow-lg shadow-cyan-500/30 transition-all hover:-translate-y-0.5 hover:shadow-cyan-500/45 active:scale-95">
                   <UploadIcon className="h-4 w-4" />Upload
                 </button>
               </div>
               {/* Stats chips */}
-              <div className="flex items-center gap-2">
+              <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:flex lg:w-auto lg:items-center">
                 <div className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-white/80 px-4 py-2.5 shadow-sm">
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100">
                     <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-indigo-500"><path d="M2 6a2 2 0 0 1 2-2h5l2 2h5a2 2 0 0 1 2 2H2V6Z"/><path d="M2 9.5v5A2.5 2.5 0 0 0 4.5 17h11a2.5 2.5 0 0 0 2.5-2.5v-5H2Z"/></svg>
@@ -1502,7 +1502,7 @@ const Dashboard = () => {
 
           {/* Document Section */}
           <section>
-            <div className="mb-5 flex items-center justify-between">
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-50 border border-sky-100">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5 text-sky-500">
@@ -1525,8 +1525,8 @@ const Dashboard = () => {
               ) : null}
             </div>
 
-            <div className="overflow-hidden rounded-[20px] border border-slate-100 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.06)] px-2 pb-2 pt-1">
-              <table className="w-full border-separate border-spacing-0 text-left">
+            <div className="overflow-x-auto rounded-[20px] border border-slate-100 bg-white px-2 pb-2 pt-1 shadow-[0_8px_30px_rgb(0,0,0,0.06)]">
+              <table className="min-w-[720px] w-full border-separate border-spacing-0 text-left">
                 <thead>
                   <tr>
                     <th className="px-6 py-5 text-[11px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-200/60">Name</th>

@@ -1,189 +1,184 @@
 # SKS - Smart Knowledge System
 
-SKS is a document workspace that combines document storage, folder organization, semantic retrieval, and Gemini-powered study assistance in one system. Users can upload source documents, organize them into folders, search by meaning, generate summaries and mind maps, and ask grounded questions against indexed document content.
+SKS is a full-stack academic document workspace. It lets users upload study documents, organize them into folders, search by meaning, preview/read files, save study notes, and use grounded AI features over indexed document content.
 
-This repository is organized as a small full-stack monorepo:
-
-- `sks-backend`: NestJS API, PostgreSQL persistence, pgvector-based retrieval, Gemini integration
-- `sks-frontend`: React + Vite client for authentication, dashboard, document viewing, summary, search, chat, and mind map UI
-
-## Key Features
-
-- JWT-based authentication with register, login, and profile endpoints
-- Upload support for `PDF`, `DOCX`, and `TXT` documents
-- Local file storage for uploaded source files
-- Automatic text extraction and chunking during upload
-- SHA-256 deduplication for repeated uploads
-- Folder hierarchy with nested folders and document assignment
-- Favorites, rename, delete, and download document actions
-- Semantic search powered by `pgvector` embeddings
-- Related document suggestions
-- AI-generated document summaries
-- AI-generated document mind maps
-- Document question answering with per-document ask history
+The project has changed from the earlier mind map version. Mind map and diagram generation are no longer part of the current codebase. The current AI feature set is summary, document Q&A, Study GPS, quiz generation, quiz chat, semantic search, and related documents.
 
 ## Repository Layout
 
 ```text
 .
-+-- sks-backend/
++-- sks-backend/                 # NestJS API
 |   +-- src/
-|   |   +-- common/llm/             # Gemini integration
-|   |   +-- database/
-|   |   |   +-- entities/           # TypeORM entities
-|   |   |   +-- migrations/         # Database migrations
-|   |   |   +-- repositories/       # Repository layer
+|   |   +-- common/llm/           # MiMo text generation + Gemini embeddings
+|   |   +-- database/             # TypeORM entities, migrations, repositories
 |   |   +-- modules/
-|   |   |   +-- authentication/     # Auth module
-|   |   |   +-- document/           # Upload and document CRUD
-|   |   |   +-- folder/             # Folder hierarchy and placement
-|   |   |   +-- rag/                # Search, summary, Q&A, mind map
-|   |   +-- main.ts                 # App bootstrap
-|   +-- uploads/                    # Saved source files
-|   +-- runtime-logs/               # Runtime logs (if produced locally)
-+-- sks-frontend/
+|   |       +-- authentication/   # Register, login, profile, JWT guard
+|   |       +-- document/         # Upload, document CRUD, file serving, notes
+|   |       +-- folder/           # Folder hierarchy and document placement
+|   |       +-- rag/              # Search, summary, Q&A, Study GPS, quiz
+|   +-- uploads/                  # Local uploaded files, ignored by git
++-- sks-frontend/                # React + Vite client
 |   +-- src/
-|   |   +-- components/             # Reusable UI blocks
-|   |   +-- context/                # React context providers
-|   |   +-- pages/                  # App pages
-|   |   +-- service/                # API wrappers used by UI
-|   |   +-- services/               # Shared client utilities
-|   +-- vite.config.js
+|       +-- components/           # Reusable UI and workspace shell
+|       +-- context/              # Document viewer session state
+|       +-- pages/                # Workspace, viewer, Study GPS, quiz
+|       +-- service/              # API wrappers used by UI
+|       +-- services/             # Shared Axios client
++-- render.yaml                  # Render backend, frontend, and database config
 +-- README.md
 ```
+
+## Current Features
+
+- JWT authentication with register, login, and profile.
+- Upload `PDF`, `DOCX`, and `TXT` documents up to 10 MB.
+- Local file storage, file preview/download, document rename/delete, and favorites.
+- Automatic text extraction, chunking, background indexing, and embedding storage.
+- SHA-256 content hash deduplication for repeated uploads.
+- Nested folders with create, rename, move, delete, and document assignment.
+- Semantic document search with pgvector and keyword fallback behavior.
+- Related document suggestions.
+- Document summaries with default and custom summary slots.
+- Document Q&A with per-document ask history.
+- SKS Note for per-document study notes.
+- Study GPS: multi-document study roadmap by goal, level, days, hours, and language.
+- Study GPS day chat with saved day-specific chat history.
+- Quiz generation from selected documents with multiple-choice or true/false questions.
+- Quiz review chat with persisted quiz chat history.
+
+Removed feature:
+
+- Mind map / diagram generation and UI are no longer present.
+
+## Tech Stack
+
+- **Frontend**: React 19, Vite 8, React Router 7, Axios, Tailwind CSS, React Markdown.
+- **Backend**: NestJS 11, TypeScript, TypeORM, Passport JWT.
+- **Database**: PostgreSQL with `pgcrypto` and `pgvector`.
+- **Text generation LLM**: MiMo via `MIMO_API_KEY`, default model `mimo-v2.5-pro`.
+- **Embeddings**: Google Gemini via `GEMINI_API_KEY`, default model `gemini-embedding-001`.
+- **Document parsing**: `pdf-parse` for PDF, `mammoth` for DOCX, native UTF-8 parsing for TXT.
+- **Testing**: Jest and Supertest.
+- **Deployment config**: Render blueprint in `render.yaml`.
 
 ## System Overview
 
 ### Backend
 
-The backend is a NestJS application exposed under the global `/api` prefix. Core modules:
+The backend is a NestJS API served under the global `/api` prefix.
 
-- `authentication`: register, login, profile, JWT guard
-- `document`: upload, pagination, details, file serving, rename, favorites
-- `folder`: nested folders, move, rename, delete, assign/remove documents
-- `rag`: semantic search, related documents, summary, mind map, ask history
+Core modules:
+
+- `authentication`: user registration, login, profile, JWT authentication.
+- `document`: upload, extracted text storage, file serving, favorites, search, notes, related documents.
+- `folder`: per-user folder tree and document placement.
+- `rag`: indexing, retrieval, summary, Q&A, Study GPS, quiz, and chat history.
+- `common/llm`: provider boundary for text generation and embeddings.
 
 ### Frontend
 
-The frontend is a React 19 + Vite application running on port `3000`. It uses:
+The frontend is a React + Vite app. It uses:
 
-- `react-router-dom` for routing
-- `axios` for API communication
-- `@xyflow/react` + `elkjs` for mind map rendering/layout
-- `mermaid` for diagram-related UI support
-- `Tailwind CSS` for styling
+- `react-router-dom` for routing.
+- `axios` for API communication.
+- `react-markdown` and `remark-gfm` for rendering AI responses.
+- Tailwind CSS plus app-specific CSS for the workspace UI.
 
-The frontend expects the API base URL from:
+The API base URL is read from:
 
 - `VITE_API_BASE_URL`
 - fallback: `http://localhost:8000/api`
 
-## Tech Stack
+Important client routes:
 
-- **Frontend**: React 19, Vite 8, React Router 7, Tailwind CSS
-- **Backend**: NestJS 11, TypeScript, TypeORM
-- **Database**: PostgreSQL
-- **Vector Search**: `pgvector`
-- **LLM / Embeddings**: Google Gemini (`gemini-2.5-flash`, `gemini-embedding-001`)
-- **Document Parsing**:
-  - `pdf-parse` for PDF
-  - `mammoth` for DOCX
-  - native UTF-8 parsing for TXT
-- **Authentication**: JWT + Passport
-- **Testing**: Jest, Supertest
+- `/`
+- `/login`
+- `/register`
+- `/app`
+- `/app/study-gps`
+- `/app/quiz`
+- `/app/favorites`
+- `/app/documents/:documentId`
 
-## Core Data Model
+Protected app routes require a JWT token stored in browser `localStorage`.
 
-Important tables created by the migrations:
+## AI and RAG Pipeline
 
-- `users`: application users
-- `document`: canonical uploaded documents and extracted metadata
-- `chunks`: chunked text segments used for retrieval
-- `user_documents`: user-to-document ownership and favorites
-- `folder`: nested folder tree per owner
-- `document_ask_history`: question/answer history per document
-
-Important database requirements:
-
-- `pgcrypto` extension for UUID generation
-- `vector` extension for embedding storage and similarity search
-
-## RAG Pipeline
-
-At a high level, the document intelligence flow looks like this:
-
-```mermaid
-flowchart LR
-    A["Upload file"] --> B["Extract text"]
-    B --> C["Chunk content"]
-    C --> D["Store document + chunks"]
-    D --> E["Generate Gemini embeddings"]
-    E --> F["Persist vectors in pgvector"]
-    F --> G["Semantic search / Q&A / summary / mind map"]
+```text
+Upload file
+  -> Extract text
+  -> Split into chunks
+  -> Store document and chunks
+  -> Generate Gemini embeddings
+  -> Persist vectors in PostgreSQL pgvector
+  -> Retrieve relevant chunks
+  -> Use MiMo for grounded summaries, answers, quizzes, and study routes
 ```
 
-More concretely:
+Important implementation notes:
 
-1. User uploads a `PDF`, `DOCX`, or `TXT` file.
-2. Backend stores the file under `sks-backend/uploads/`.
-3. Text is extracted and split into roughly 1000-character chunks.
-4. Chunks are saved to PostgreSQL.
-5. Gemini embeddings are generated for each chunk.
-6. Embeddings are stored in the `chunks.embedding` vector column.
-7. Search and QA retrieve the most relevant chunks by semantic similarity.
-8. Summary and mind map generation use representative document context plus Gemini text generation.
+- Upload returns quickly after storing the document; AI indexing runs in the background.
+- Search and AI features call `ensureDocumentIndexed` when they need indexed content.
+- Text generation is injected through `LLM_GENERATION_SERVICE`, currently backed by `MimoGenerationService`.
+- Gemini is currently used for embeddings only.
+- Structured AI output is requested as raw JSON and repaired/validated where needed.
+- Summary artifacts are cached in `user_documents.extra_attributes.aiArtifacts`.
+- Study GPS and quiz chat histories are stored in dedicated tables.
 
-Additional implementation notes:
+## Data Model
 
-- Upload deduplication is based on file content hash.
-- A root folder is created automatically for a user if needed.
-- Semantic search can append keyword-based fallback results if semantic confidence is weak.
-- Ask history is persisted per document.
+Important tables created by migrations:
+
+- `users`: application users.
+- `document`: canonical uploaded document metadata and source file reference.
+- `chunks`: extracted text chunks with optional embedding vectors.
+- `document_chunks`: many-to-many relation between documents and chunks.
+- `user_documents`: per-user ownership, display name, favorites, folder link, notes, and AI artifact cache.
+- `folder`: nested folder tree per owner.
+- `document_ask_history`: document Q&A history.
+- `study_gps_plans`: active Study GPS plan per user.
+- `study_gps_day_chat_messages`: Study GPS day chat messages.
+- `quiz_chat_history`: quiz review chat messages.
+
+Database requirements:
+
+- `pgcrypto` for UUID generation.
+- `vector` from pgvector for embedding storage and similarity search.
 
 ## Prerequisites
 
-Before running the project locally, make sure you have:
-
-- Node.js `20+` recommended
-- npm `10+` recommended
-- PostgreSQL `15+` or `16+`
-- A PostgreSQL installation with the `pgvector` extension available
-- A valid Gemini API key
-
-If you already have the project source locally, you can skip cloning and start from the project folder directly.
+- Node.js `20+` minimum, Node.js `22+` recommended.
+- npm `10+`.
+- PostgreSQL `15+` or `16+`.
+- pgvector installed on the PostgreSQL server.
+- Gemini API key for embeddings.
+- MiMo API key for AI text generation.
 
 ## Getting Started
 
-### 1. Open the repository
-
-If you already have the source:
-
-```bash
-cd ss2_s2026_sks
-```
-
-If you are cloning from a remote:
-
-```bash
-git clone <your-repository-url>
-cd ss2_s2026_sks
-```
-
-### 2. Configure the backend environment
-
-Copy the backend example environment file:
+### 1. Install backend dependencies
 
 ```bash
 cd sks-backend
+npm install
+```
+
+### 2. Configure backend environment
+
+```bash
 copy .env.example .env
 ```
 
-Recommended backend environment values:
+Required local values:
 
 ```env
 PORT=8000
 CORS_ORIGIN=http://localhost:3000
+UPLOADS_DIR=uploads
 
+DATABASE_URL=
+DATABASE_SSL=false
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
 DATABASE_USERNAME=postgres
@@ -196,122 +191,85 @@ JWT_SECRET=change_me_before_production
 JWT_EXPIRES_IN=1d
 
 GEMINI_API_KEY=your_gemini_api_key
-GEMINI_TEXT_MODEL=gemini-2.5-flash
 GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+
+MIMO_API_KEY=your_mimo_api_key
+MIMO_BASE_URL=https://api.xiaomimimo.com/v1
+MIMO_MODEL=mimo-v2.5-pro
 ```
 
-Notes:
-
-- `CORS_ORIGIN` defaults to `http://localhost:3000`, which matches the frontend Vite dev server.
-- AI features require `GEMINI_API_KEY`.
-- `DATABASE_SYNC` should remain `false` because the project uses migrations.
+Do not commit real `.env` values. `DATABASE_SYNC` should stay `false` because the project uses migrations.
 
 ### 3. Prepare PostgreSQL
 
-Create a database named `sks` and ensure the following extensions are available:
+Create a database named `sks`, then make sure the PostgreSQL server has pgvector installed. The migrations create the extensions if available:
 
-- `pgcrypto`
-- `vector`
-
-The migrations themselves will run:
-
-- `CREATE EXTENSION IF NOT EXISTS pgcrypto;`
-- `CREATE EXTENSION IF NOT EXISTS vector;`
-
-But PostgreSQL still needs the `pgvector` extension installed on the server beforehand.
-
-### 4. Install backend dependencies
-
-```bash
-cd sks-backend
-npm install
+```sql
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-### 5. Run backend migrations
+### 4. Run backend migrations
 
 ```bash
 npm run migration:run
 ```
 
-### 6. Start the backend
+### 5. Start the backend
 
 ```bash
 npm run start:dev
 ```
 
-The API will be available at:
+Backend URL:
 
 - `http://localhost:8000/api`
 
-### 7. Configure the frontend environment
-
-There is no committed frontend env example file yet. Create `sks-frontend/.env.local` if you want to override the default API base URL:
-
-```env
-VITE_API_BASE_URL=http://localhost:8000/api
-```
-
-If you omit this file, the frontend already falls back to `http://localhost:8000/api`.
-
-### 8. Install frontend dependencies
+### 6. Install frontend dependencies
 
 ```bash
 cd ../sks-frontend
 npm install
 ```
 
-### 9. Start the frontend
+### 7. Configure frontend environment
+
+Create `sks-frontend/.env.local` only if you need to override the default API URL:
+
+```env
+VITE_API_BASE_URL=http://localhost:8000/api
+```
+
+### 8. Start the frontend
 
 ```bash
 npm run dev
 ```
 
-The frontend will be available at:
+Frontend URL:
 
 - `http://localhost:3000`
 
-## Local Development Workflow
+## Local Workflow
 
-Once both services are running:
+After both services are running:
 
-1. Open `http://localhost:3000`
-2. Register a new account
-3. Log in
-4. Upload a `PDF`, `DOCX`, or `TXT` file
-5. Open the uploaded document
-6. Try:
-   - document summary
-   - mind map generation
-   - ask-document chat
-   - semantic search
-   - favorites
-   - folder organization
-
-## Supported File Uploads
-
-Current backend upload constraints:
-
-- Supported MIME types:
-  - `application/pdf`
-  - `application/vnd.openxmlformats-officedocument.wordprocessingml.document`
-  - `text/plain`
-- Max upload size: `10 MB`
-
-If the file is invalid or text extraction fails, the backend returns a `400 Bad Request`.
+1. Open `http://localhost:3000`.
+2. Register and log in.
+3. Upload a `PDF`, `DOCX`, or `TXT` document.
+4. Wait for AI indexing if the document shows an indexing state.
+5. Use workspace search, folders, favorites, and document actions.
+6. Open a document and try summary, Ask AI, SKS Note, and related documents.
+7. Generate Study GPS from selected documents.
+8. Generate a Quiz from selected documents and use quiz review chat.
 
 ## API Overview
 
-All backend routes are served under the global prefix:
-
-- `/api`
+All backend routes use the `/api` prefix.
 
 ### Authentication
 
-Base route:
-
-- `/api/auth`
-
-Main endpoints:
+Base route: `/api/auth`
 
 - `POST /register`
 - `POST /login`
@@ -319,11 +277,7 @@ Main endpoints:
 
 ### Documents
 
-Base route:
-
-- `/api/documents`
-
-Main endpoints:
+Base route: `/api/documents`
 
 - `POST /upload`
 - `GET /`
@@ -332,17 +286,16 @@ Main endpoints:
 - `GET /:id`
 - `GET /:id/file`
 - `GET /:id/related`
+- `GET /:documentId/note`
+- `PATCH /:documentId/note`
+- `DELETE /:documentId/note/:noteId`
 - `PATCH /:documentId/update-name`
 - `POST /:documentId/toggle-favorite`
 - `DELETE /delete`
 
 ### Folders
 
-Base route:
-
-- `/api/folders`
-
-Main endpoints:
+Base route: `/api/folders`
 
 - `GET /`
 - `GET /:id`
@@ -354,24 +307,38 @@ Main endpoints:
 - `DELETE /documents/remove`
 - `GET /:folderId/documents`
 
-### RAG / AI Features
+### RAG / AI
 
-Base route:
-
-- `/api/rag`
-
-Main endpoints:
+Base route: `/api/rag`
 
 - `POST /documents/:documentId/ask`
 - `GET /documents/:documentId/ask/history`
 - `DELETE /documents/:documentId/ask/history`
 - `POST /documents/:documentId/summary`
-- `POST /documents/:documentId/mindmap`
-- `POST /documents/:documentId/diagram`
+- `GET /study-gps`
+- `POST /study-gps`
+- `DELETE /study-gps`
+- `GET /study-gps/day-chat/:day/history`
+- `POST /study-gps/day-chat/start`
+- `POST /study-gps/day-chat`
+- `DELETE /study-gps/day-chat/:day/history`
+- `POST /quiz/generate`
+- `GET /quiz/chat/history`
+- `POST /quiz/chat`
+- `DELETE /quiz/chat/history`
 
-## Backend Scripts
+### LLM Diagnostics
 
-From `sks-backend/`:
+Base route: `/api/llm`
+
+- `GET /test?prompt=...`
+- `GET /test-embedding?text=...`
+
+These are simple diagnostic endpoints for local/provider checks.
+
+## Scripts
+
+Backend scripts from `sks-backend/`:
 
 ```bash
 npm run build
@@ -389,9 +356,7 @@ npm run migration:revert
 npm run migration:show
 ```
 
-## Frontend Scripts
-
-From `sks-frontend/`:
+Frontend scripts from `sks-frontend/`:
 
 ```bash
 npm run dev
@@ -400,9 +365,7 @@ npm run lint
 npm run preview
 ```
 
-## Recommended Validation Before Demo or Submission
-
-Backend:
+Recommended validation before demo or submission:
 
 ```bash
 cd sks-backend
@@ -412,72 +375,71 @@ npm test -- --runInBand
 npm run test:e2e -- --runInBand
 ```
 
-Frontend:
-
 ```bash
 cd sks-frontend
 npm run lint
 npm run build
 ```
 
-## Frontend Routing
+## Storage and Persistence
 
-Important client routes:
+- Uploaded files are stored locally under `sks-backend/uploads/` by default.
+- JWT auth state is stored in browser `localStorage`.
+- Document notes and AI summary artifacts are stored in `user_documents.extra_attributes`.
+- Embeddings are stored in the `chunks.embedding` vector column.
+- Ask history, Study GPS, Study GPS day chat, and quiz chat are stored in PostgreSQL tables.
 
-- `/login`
-- `/register`
-- `/app`
-- `/app/home`
-- `/app/favorites`
-- `/app/documents/:documentId`
+Production deployments should provide persistent storage for uploaded files.
 
-Protected app routes are gated by a local auth token stored in `localStorage`.
+## Render Deployment
 
-## Storage and Persistence Notes
+The repository includes `render.yaml` with:
 
-- Uploaded files are stored on local disk under `sks-backend/uploads/`
-- JWT auth state is stored in browser `localStorage`
-- AI retrieval data is stored in PostgreSQL
-- Summary and mind map artifacts are cached in the backend document model
+- Backend web service: `sks-s2026-backend`.
+- Static frontend service: `sks-s2026-frontend`.
+- PostgreSQL database: `sks-s2026-postgres`.
+- Backend pre-deploy migration command: `npm run migration:run`.
+- Frontend SPA rewrite to `/index.html`.
 
-Because uploaded files are stored locally, production deployment should mount persistent storage for:
+Secrets marked `sync: false` in `render.yaml` must be configured in Render:
 
-- `sks-backend/uploads/`
+- `JWT_SECRET`
+- `GEMINI_API_KEY`
+- `MIMO_API_KEY`
 
-## Production Deployment Notes
+Production checklist:
 
-This repository does not currently include a committed production deployment manifest such as Docker Compose, Kubernetes, Railway, or Render config.
-
-A practical production topology would be:
-
-- static frontend build served by Nginx or a static host
-- NestJS backend running as a Node service
-- PostgreSQL with `pgvector`
-- persistent volume for uploaded files
-- environment-managed Gemini API key and JWT secret
-
-Minimum production checklist:
-
-- set a strong `JWT_SECRET`
-- restrict `CORS_ORIGIN`
-- back up PostgreSQL regularly
-- persist the uploads directory
-- monitor Gemini quota and API failures
-- disable broad database logging unless needed
+- Use a strong `JWT_SECRET`.
+- Restrict `CORS_ORIGIN` to the deployed frontend URL.
+- Keep `DATABASE_SYNC=false`.
+- Ensure pgvector is available in the production database.
+- Persist or externalize uploaded file storage.
+- Monitor Gemini embedding quota and MiMo generation quota.
 
 ## Troubleshooting
 
-### The backend starts but AI features fail
+### AI generation fails
 
 Check:
 
-- `GEMINI_API_KEY` is set correctly
-- outbound network access to Gemini is available
-- the configured model names are valid for your account
+- `MIMO_API_KEY` is set.
+- `MIMO_BASE_URL` and `MIMO_MODEL` are valid.
+- The backend can reach the MiMo API.
+- Provider quota has not been exhausted.
+
+### Search or indexing fails
+
+Check:
+
+- `GEMINI_API_KEY` is set.
+- `GEMINI_EMBEDDING_MODEL=gemini-embedding-001`.
+- The document contains extractable text.
+- Migrations created the `chunks.embedding` vector column.
+- pgvector is installed on PostgreSQL.
 
 ### Migrations fail on `CREATE EXTENSION vector`
 
-Your PostgreSQL server likely does not have `pgvector` installed. Install the extension on the database server first, then rerun:
+Install pgvector on the PostgreSQL server, then rerun:
 
 ```bash
 cd sks-backend
@@ -488,30 +450,27 @@ npm run migration:run
 
 Check:
 
-- backend is running on port `8000`
-- frontend is running on port `3000`
-- `CORS_ORIGIN=http://localhost:3000`
-- `VITE_API_BASE_URL` points to `http://localhost:8000/api`
+- Backend is running on port `8000`.
+- Frontend is running on port `3000`.
+- `CORS_ORIGIN=http://localhost:3000`.
+- `VITE_API_BASE_URL=http://localhost:8000/api`.
 
-### Uploaded file appears in the UI but search or summary does not work
+### Upload works but AI features are not ready
 
 Check:
 
-- document indexing completed successfully
-- the document contains extractable text
-- Gemini embedding calls are working
-- the database vector columns were created by the migrations
+- The document status is not still `indexing`.
+- The file is under 10 MB and has extractable text.
+- Gemini embedding calls are working.
+- MiMo generation calls are working for summary, quiz, Study GPS, and Q&A.
 
-## Current Gaps / Future Improvements
+## Current Gaps / Follow-Up
 
-Based on the current repository state, a few follow-up improvements would make the project easier to operate:
-
-- add a root-level Docker setup for backend + frontend + PostgreSQL
-- commit `sks-frontend/.env.example`
-- replace template READMEs inside `sks-backend/` and `sks-frontend/`
-- add seed data or demo fixture documents
-- document deployment on a specific platform
+- Add a frontend `.env.example`.
+- Add a Docker Compose setup for backend, frontend, PostgreSQL, and pgvector.
+- Decide on a production file storage strategy for uploads.
+- Add more end-to-end coverage for Study GPS and Quiz flows.
 
 ## License
 
-No explicit project license is documented at the repository root at the moment. The backend package is currently marked `UNLICENSED`.
+No explicit root license file is currently documented. The backend package is marked `UNLICENSED`.

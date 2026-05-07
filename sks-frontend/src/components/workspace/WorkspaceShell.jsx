@@ -134,9 +134,9 @@ const WorkspaceShell = () => {
             : 'h-20 border-b border-slate-200/80 bg-white shadow-sm shadow-slate-900/5'
         }`}
       >
-        <div className="relative mx-auto flex w-full max-w-[1440px] items-center justify-between px-6 lg:px-10">
+        <div className="relative mx-auto flex w-full max-w-[1440px] items-center justify-between px-4 sm:px-6 lg:px-10">
 
-          <div className="flex items-center gap-8 min-w-0">
+          <div className="flex min-w-0 items-center gap-4 sm:gap-8">
             <button
               type="button"
               onClick={() => navigate('/app')}
@@ -183,7 +183,7 @@ const WorkspaceShell = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <div className={`flex items-center gap-3 ${isDocumentViewer ? 'ml-2' : 'ml-6'}`}>
+            <div className={`flex items-center gap-3 ${isDocumentViewer ? 'ml-2' : 'ml-0 sm:ml-4 lg:ml-6'}`}>
               <div className="group relative flex items-center gap-3 cursor-pointer">
                 <div className="relative flex h-9 w-9 items-center justify-center">
                   <div className="absolute inset-0 rounded-xl bg-gradient-to-tr from-cyan-400 to-blue-500 blur-md opacity-20 group-hover:opacity-40 transition-opacity" />
@@ -217,12 +217,35 @@ const WorkspaceShell = () => {
         </div>
       </header>
 
+      {!isDocumentViewer ? (
+        <nav className="fixed inset-x-0 bottom-0 z-[90] border-t border-slate-200 bg-white/95 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-2 shadow-[0_-16px_40px_-24px_rgba(15,23,42,0.55)] backdrop-blur-xl lg:hidden">
+          <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
+            {NAV_ITEMS.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `flex min-h-12 flex-col items-center justify-center rounded-2xl px-2 text-center text-[10px] font-black uppercase tracking-[0.08em] transition ${
+                    isActive
+                      ? 'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-100'
+                      : 'text-slate-400 hover:bg-slate-50 hover:text-slate-700'
+                  }`
+                }
+              >
+                <span className="line-clamp-1">{item.label}</span>
+              </NavLink>
+            ))}
+          </div>
+        </nav>
+      ) : null}
+
       {isDocumentViewer ? (
         <section className="relative w-full h-screen pt-16 overflow-hidden">
           <Outlet />
         </section>
       ) : (
-        <section className="relative mx-auto w-full max-w-[1440px] px-6 pt-20 lg:px-10 lg:pt-24">
+        <section className="relative mx-auto w-full max-w-[1440px] px-4 pb-24 pt-20 sm:px-6 lg:px-10 lg:pb-0 lg:pt-24">
           <Outlet />
         </section>
       )}

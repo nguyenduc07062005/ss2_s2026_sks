@@ -484,10 +484,10 @@ const ConfigModal = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-md animate-fade-in">
+    <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-md animate-fade-in sm:p-4">
       <form
         onSubmit={handleModalSubmit}
-        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-[32px] border border-white/20 bg-white shadow-2xl"
+        className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-[24px] border border-white/20 bg-white shadow-2xl sm:max-h-[88vh] sm:rounded-[32px]"
       >
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-100 bg-white/90 px-5 backdrop-blur-xl">
           <div className="flex min-w-0 items-center gap-3">
@@ -515,11 +515,11 @@ const ConfigModal = ({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-5 scrollbar-thin">
+        <div className="flex-1 overflow-y-auto px-4 py-4 scrollbar-thin sm:px-5 sm:py-5">
           <div className="space-y-5">
             <section>
               <FormSectionTitle icon={TargetIcon}>Goal</FormSectionTitle>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 {GOALS.map((goal) => {
                   const GoalIcon = goal.Icon;
                   const selected = form.goal === goal.value;
@@ -547,7 +547,7 @@ const ConfigModal = ({
             </section>
 
             <section className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label>
                   <FormSectionTitle icon={CalendarIcon}>Days</FormSectionTitle>
                   <input
@@ -583,7 +583,7 @@ const ConfigModal = ({
                   <FormSectionTitle icon={BrainIcon}>
                     Current Understanding
                   </FormSectionTitle>
-                  <div className="grid grid-cols-3 gap-1 rounded-2xl bg-slate-100 p-1">
+                  <div className="grid grid-cols-1 gap-1 rounded-2xl bg-slate-100 p-1 sm:grid-cols-3">
                     {LEVELS.map((level) => (
                       <button
                         key={level.value}
@@ -774,9 +774,9 @@ const ConfigModal = ({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/80 px-5 py-4">
+        <div className="flex shrink-0 flex-col items-stretch justify-between gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
           <div
-            className={`flex h-10 items-center gap-2 rounded-2xl px-3 text-xs font-black ${
+            className={`flex h-10 items-center justify-center gap-2 rounded-2xl px-3 text-xs font-black sm:justify-start ${
               selectedCount > 0
                 ? "bg-cyan-50 text-cyan-700"
                 : "bg-slate-100 text-slate-400"
@@ -849,7 +849,7 @@ const StudyDayChatModal = ({
 
   return (
     <div className="fixed inset-0 z-[175] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-md animate-fade-in sm:p-5">
-      <div className="flex h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[32px] border border-white/20 bg-white shadow-2xl">
+      <div className="flex h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[24px] border border-white/20 bg-white shadow-2xl sm:rounded-[32px]">
         <div className="flex min-h-20 shrink-0 items-center justify-between border-b border-slate-100 bg-white/90 px-5 py-4 backdrop-blur-xl sm:px-7">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-600 ring-1 ring-cyan-100">
