@@ -5,8 +5,7 @@ services:
     plan: free
     rootDir: sks-backend
     buildCommand: npm ci && npm run build
-    preDeployCommand: npm run migration:run
-    startCommand: npm run start:prod
+    startCommand: npm run migration:run && npm run start:prod
     healthCheckPath: /api
     autoDeployTrigger: commit
     envVars:
@@ -42,7 +41,6 @@ services:
   - type: web
     name: sks-s2026-frontend
     runtime: static
-    plan: free
     rootDir: sks-frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
