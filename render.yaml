@@ -23,6 +23,16 @@ services:
         value: "false"
       - key: CORS_ORIGIN
         value: https://smartknowledge.onrender.com
+      - key: DOCUMENT_STORAGE_DRIVER
+        value: r2
+      - key: CLOUDFLARE_R2_ACCOUNT_ID
+        value: 9a8821caccfda3d63668f9dc96cbec56
+      - key: CLOUDFLARE_R2_BUCKET
+        value: smartknowledge-documents
+      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        sync: false
       - key: JWT_SECRET
         sync: false
       - key: JWT_EXPIRES_IN

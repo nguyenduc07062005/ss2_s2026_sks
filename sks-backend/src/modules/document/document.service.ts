@@ -15,14 +15,13 @@ import { FolderRepository } from 'src/database/repositories/folder.repository';
 import { repairMojibakeText } from 'src/common/utils/text-encoding';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { DocumentUploadedEvent } from 'src/modules/rag/services/rag-indexing-queue.service';
+import { DocumentStorageService } from './document-storage.service';
 
 import { DataSource, IsNull } from 'typeorm';
 
 import * as crypto from 'crypto';
 import { PDFParse } from 'pdf-parse';
 import * as mammoth from 'mammoth';
-import { promises as fs } from 'fs';
-import * as path from 'path';
 
 type CreatedDocumentResult = {
   id: string;
@@ -74,12 +73,16 @@ type UpdateDocumentNoteInput = {
   content: string;
 };
 
+type DocumentFileResult = {
+  buffer: Buffer;
+  contentType: string;
+  fileName: string;
+  contentLength?: number;
+};
+
 @Injectable()
 export class DocumentService {
   private readonly logger = new Logger(DocumentService.name);
-  private readonly uploadsDirectory = path.resolve(
-    process.env.UPLOADS_DIR || 'uploads',
-  );
 
   constructor(
     private readonly documentRepository: DocumentRepository,
@@ -88,6 +91,7 @@ export class DocumentService {
     private readonly folderRepository: FolderRepository,
     private readonly dataSource: DataSource,
     private readonly eventEmitter: EventEmitter2,
+    private readonly documentStorageService: DocumentStorageService,
   ) {}
 
   /**
@@ -299,17 +303,13 @@ export class DocumentService {
         };
       }
 
-      // Save file to disk
-      const uniqueName = `${crypto.randomUUID()}-${file.originalname}`;
-      await fs.mkdir(this.uploadsDirectory, { recursive: true });
-      const filePath = path.join(this.uploadsDirectory, uniqueName);
-      await fs.writeFile(filePath, file.buffer);
-
       // Extract text from file
       const text = await this.extractTextFromFile(file);
 
       // Chunk the text
       const chunks = this.chunkText(text, 1000);
+
+      const fileRef = await this.documentStorageService.saveFile(file, ownerId);
 
       // Create document record
       const documentDto: DocumentDto = {
@@ -317,7 +317,7 @@ export class DocumentService {
         metadata: dto.metadata || {},
         docDate: dto.docDate,
         extraAttributes: dto.extraAttributes || {},
-        fileRef: filePath,
+        fileRef,
         fileSize: file.size,
         chunks,
       };
@@ -541,9 +541,8 @@ export class DocumentService {
         await chunkRepo.delete({ id: chunkId });
       }
 
-      // Delete file from disk
       if (fileRef) {
-        await fs.rm(fileRef, { force: true });
+        await this.documentStorageService.deleteFile(fileRef);
       }
 
       return { message: 'Document removed successfully' };
@@ -994,13 +993,13 @@ export class DocumentService {
   }
 
   /**
-   * Get document file path for serving
-   * Supports both Document ID and UserDocument ID for robustness
+   * Get document file bytes for serving.
+   * Supports both Document ID and UserDocument ID for robustness.
    */
-  async getDocumentFilePath(
+  async getDocumentFile(
     documentId: string,
     ownerId: string,
-  ): Promise<string> {
+  ): Promise<DocumentFileResult> {
     // Try to find by Document ID first
     let document = await this.documentRepository.findByIdAndOwner(
       documentId,
@@ -1028,14 +1027,7 @@ export class DocumentService {
       throw new NotFoundException('Document not found or not owned by user');
     }
 
-    try {
-      await fs.access(document.fileRef);
-    } catch {
-      this.logger.error(`File missing on disk: ${document.fileRef}`);
-      throw new BadRequestException('Document file not found on server');
-    }
-
-    return document.fileRef;
+    return this.documentStorageService.getFile(document.fileRef);
   }
 
   /**

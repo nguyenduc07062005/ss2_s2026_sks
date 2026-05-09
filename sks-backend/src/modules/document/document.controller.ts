@@ -303,11 +303,19 @@ export class DocumentController {
     @Res() res: Response,
   ) {
     const ownerId = this.getUserId(req);
-    const filePath = await this.documentService.getDocumentFilePath(
+    const file = await this.documentService.getDocumentFile(
       documentId,
       ownerId,
     );
-    res.sendFile(filePath);
+    res.setHeader('Content-Type', file.contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+    );
+    if (file.contentLength !== undefined) {
+      res.setHeader('Content-Length', file.contentLength.toString());
+    }
+    res.send(file.buffer);
   }
 
   // --- Update document name ---

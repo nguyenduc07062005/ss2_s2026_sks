@@ -12,12 +12,14 @@ import { RagModule } from '../rag/rag.module';
 
 import { DocumentService } from './document.service';
 import { DocumentController } from './document.controller';
+import { DocumentStorageService } from './document-storage.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Document, Chunk]), RagModule],
   controllers: [DocumentController],
   providers: [
     DocumentService,
+    DocumentStorageService,
     DocumentRepository,
     ChunkRepository,
     UserDocumentRepository,
