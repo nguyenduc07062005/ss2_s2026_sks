@@ -654,8 +654,13 @@ const DocumentViewer = () => {
   const isResizing = useRef(false);
   const containerRef = useRef(null);
   const aiPanelRef = useRef(null);
+  const aiPanelScrollTopByTabRef = useRef(aiPanelScrollTopByTab);
   const compactSidebarAdjustedRef = useRef(false);
   const [isCompactViewer, setIsCompactViewer] = useState(false);
+
+  useEffect(() => {
+    aiPanelScrollTopByTabRef.current = aiPanelScrollTopByTab;
+  }, [aiPanelScrollTopByTab]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return undefined;
@@ -1295,11 +1300,12 @@ const DocumentViewer = () => {
       return;
     }
 
-    const scrollTop = aiPanelScrollTopByTab[activeTab] ?? 0;
-    window.requestAnimationFrame(() => {
+    const scrollTop = aiPanelScrollTopByTabRef.current[activeTab] ?? 0;
+    const frameId = window.requestAnimationFrame(() => {
       panel.scrollTop = scrollTop;
     });
-  }, [activeTab, aiPanelScrollTopByTab]);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [activeTab]);
 
   const handleAsk = async () => {
     const trimmedQuestion = askQuestion.trim();
