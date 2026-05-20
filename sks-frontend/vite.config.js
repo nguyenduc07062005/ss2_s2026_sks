@@ -12,18 +12,6 @@ export default defineConfig({
             return undefined
           }
 
-          if (id.includes('mermaid')) {
-            return 'mermaid'
-          }
-
-          if (id.includes('elkjs')) {
-            return 'elk'
-          }
-
-          if (id.includes('@xyflow/react')) {
-            return 'mindmap'
-          }
-
           if (
             id.includes('react-router-dom') ||
             id.includes('react-dom') ||

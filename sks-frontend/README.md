@@ -28,7 +28,15 @@ Mind map UI has been removed from the current frontend.
 
 The API base URL is read from `VITE_API_BASE_URL`.
 
-Local override:
+Create the local frontend env file:
+
+```bash
+copy .env.example .env.local
+```
+
+On macOS or Linux, use `cp .env.example .env.local`.
+
+Local value:
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000/api

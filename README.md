@@ -25,7 +25,7 @@ The project has changed from the earlier mind map version. Mind map and diagram 
 |       +-- pages/                # Workspace, viewer, Study GPS, quiz
 |       +-- service/              # API wrappers used by UI
 |       +-- services/             # Shared Axios client
-+-- render.yaml                  # Render backend, frontend, and database config
++-- render.yaml                  # Render backend and frontend config
 +-- README.md
 ```
 
@@ -158,7 +158,11 @@ Database requirements:
 - Gemini API key for embeddings.
 - MiMo API key for AI text generation.
 
-## Getting Started
+## Quick Start for Grading
+
+Run the backend and frontend in two separate terminals. The backend must start first because the frontend calls `http://localhost:8000/api` by default.
+
+Before running these commands, create a PostgreSQL database named `sks` and make sure pgvector is available on that PostgreSQL server.
 
 ### 1. Install backend dependencies
 
@@ -172,6 +176,8 @@ npm install
 ```bash
 copy .env.example .env
 ```
+
+On macOS or Linux, use `cp .env.example .env`.
 
 Required local values:
 
@@ -211,7 +217,16 @@ MIMO_BASE_URL=https://token-plan-sgp.xiaomimimo.com/v1
 MIMO_MODEL=mimo-v2.5-pro
 ```
 
-Do not commit real `.env` values. `DATABASE_SYNC` should stay `false` because the project uses migrations. For local Gmail SMTP, set `MAIL_PROVIDER=smtp` and use a Gmail app password for `SMTP_PASS`. On Render Free, set `MAIL_PROVIDER=brevo` and `BREVO_API_KEY` because Render Free blocks outbound SMTP ports.
+Do not commit real `.env` values. `DATABASE_SYNC` should stay `false` because the project uses migrations.
+
+Registration and password reset send real email links. For local grading, configure one email provider:
+
+- Gmail SMTP: set `MAIL_PROVIDER=smtp` and use a Gmail app password for `SMTP_PASS`.
+- Brevo API: set `MAIL_PROVIDER=brevo` and `BREVO_API_KEY`.
+
+On Render Free, use Brevo because outbound SMTP ports are blocked. If no email provider is configured, the app can start but users cannot receive registration completion or password reset links.
+
+AI features require both `GEMINI_API_KEY` for embeddings and `MIMO_API_KEY` for text generation. Authentication, upload, folders, and document management can be checked first, but summary, Q&A, Study GPS, quiz, semantic search, and related documents need those keys.
 
 ### 3. Prepare PostgreSQL
 
@@ -247,11 +262,19 @@ npm install
 
 ### 7. Configure frontend environment
 
-Create `sks-frontend/.env.local` only if you need to override the default API URL:
+Copy the frontend example file:
+
+```bash
+copy .env.example .env.local
+```
+
+The local value should be:
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000/api
 ```
+
+On macOS or Linux, use `cp .env.example .env.local` instead of `copy`.
 
 ### 8. Start the frontend
 
@@ -365,6 +388,7 @@ npm run start:dev
 npm run start:debug
 npm run start:prod
 npm run lint
+npm run lint:fix
 npm run test
 npm run test:watch
 npm run test:cov
@@ -444,6 +468,15 @@ Production checklist:
 
 ## Troubleshooting
 
+### Registration or password reset email does not arrive
+
+Check:
+
+- `MAIL_PROVIDER` matches the provider values you configured.
+- For Gmail SMTP, `SMTP_USER`, `SMTP_PASS`, `SMTP_HOST`, `SMTP_PORT`, and `SMTP_SECURE` are set correctly.
+- For Brevo, `BREVO_API_KEY` and `MAIL_FROM` are set correctly.
+- `FRONTEND_URL=http://localhost:3000` locally, so email links point back to the frontend.
+
 ### AI generation fails
 
 Check:
@@ -490,7 +523,7 @@ Check:
 - Gemini embedding calls are working.
 - MiMo generation calls are working for summary, quiz, Study GPS, and Q&A.
 
-## Current Gaps / Follow-Up
+## Optional Future Improvements
 
 - Add a Docker Compose setup for backend, frontend, PostgreSQL, and pgvector.
 - Add more end-to-end coverage for Study GPS and Quiz flows.

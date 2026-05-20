@@ -31,6 +31,8 @@ Copy the example file:
 copy .env.example .env
 ```
 
+On macOS or Linux, use `cp .env.example .env`.
+
 Important values:
 
 - `DATABASE_URL` or `DATABASE_HOST` / `DATABASE_PORT` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` / `DATABASE_NAME`
@@ -50,6 +52,8 @@ Never commit real `.env` values.
 
 For local Gmail SMTP, use an app password for `SMTP_PASS`, not your normal Gmail password. On Render Free, use `MAIL_PROVIDER=brevo` because SMTP ports are blocked.
 
+Registration and password reset require a working email provider. If email is not configured, the backend can run but users cannot receive the setup or reset links.
+
 ## Local Commands
 
 ```bash
@@ -66,6 +70,8 @@ npm run build
 npm test -- --runInBand
 npm run test:e2e -- --runInBand
 ```
+
+Use `npm run lint:fix` only when you intentionally want ESLint to rewrite files.
 
 ## API Prefix
 
