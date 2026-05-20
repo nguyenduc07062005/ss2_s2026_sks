@@ -10,7 +10,7 @@ import type {
   LlmGenerationService,
 } from './llm-generation.types';
 
-const DEFAULT_MIMO_BASE_URL = 'https://api.xiaomimimo.com/v1';
+const DEFAULT_MIMO_BASE_URL = 'https://token-plan-sgp.xiaomimimo.com/v1';
 const DEFAULT_MIMO_MODEL = 'mimo-v2.5-pro';
 const DEFAULT_MIMO_SYSTEM_PROMPT =
   'You are an academic AI assistant inside SKS Smart Knowledge System.';

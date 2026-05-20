@@ -23,6 +23,72 @@ import {
   getDocumentSummary,
 } from "../service/ragAPI.js";
 
+const isSafeDocxUrl = (value, attributeName) => {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return false;
+  }
+
+  if (trimmedValue.startsWith("#")) {
+    return true;
+  }
+
+  try {
+    const url = new URL(trimmedValue, window.location.origin);
+    const protocol = url.protocol.toLowerCase();
+
+    if (attributeName === "src") {
+      return (
+        protocol === "https:" ||
+        protocol === "http:" ||
+        protocol === "blob:" ||
+        trimmedValue.toLowerCase().startsWith("data:image/")
+      );
+    }
+
+    return protocol === "https:" || protocol === "http:" || protocol === "mailto:";
+  } catch {
+    return false;
+  }
+};
+
+const sanitizeDocxHtml = (html) => {
+  if (typeof window === "undefined" || typeof DOMParser === "undefined") {
+    return "";
+  }
+
+  const parsedDocument = new DOMParser().parseFromString(html, "text/html");
+  parsedDocument
+    .querySelectorAll(
+      "script,style,iframe,object,embed,link,meta,base,form,input,button",
+    )
+    .forEach((element) => element.remove());
+
+  parsedDocument.body.querySelectorAll("*").forEach((element) => {
+    [...element.attributes].forEach((attribute) => {
+      const attributeName = attribute.name.toLowerCase();
+
+      if (
+        attributeName.startsWith("on") ||
+        attributeName === "style" ||
+        attributeName === "srcdoc"
+      ) {
+        element.removeAttribute(attribute.name);
+        return;
+      }
+
+      if (
+        (attributeName === "href" || attributeName === "src") &&
+        !isSafeDocxUrl(attribute.value, attributeName)
+      ) {
+        element.removeAttribute(attribute.name);
+      }
+    });
+  });
+
+  return parsedDocument.body.innerHTML;
+};
 
 const askMarkdownComponents = {
   p: ({ children }) => (
@@ -742,7 +808,7 @@ const DocumentViewer = () => {
               const mammoth = await import("mammoth");
               const arrayBuffer = await fileResult.value.blob.arrayBuffer();
               const { value: html } = await mammoth.convertToHtml({ arrayBuffer });
-              if (isActive) setDocxHtml(html);
+              if (isActive) setDocxHtml(sanitizeDocxHtml(html));
             } catch {
               // fall through to "Preview Not Available"
             }
@@ -1212,11 +1278,12 @@ const DocumentViewer = () => {
   const handleToggleFavorite = async (id) => {
     try {
       await toggleFavorite(id);
+      setError("");
       setDocumentData((c) =>
         c && c.id === id ? { ...c, isFavorite: !c.isFavorite } : c,
       );
     } catch (err) {
-      console.error("Favorite toggle failed:", err);
+      setError(err.response?.data?.message || "Failed to update favorite.");
     }
   };
 
@@ -1225,15 +1292,16 @@ const DocumentViewer = () => {
     try {
       await openDocumentFile(documentId);
     } catch (err) {
-      console.error("Open fail:", err);
+      setError(err.response?.data?.message || "Failed to open document.");
     }
   }, [documentId]);
 
   const handleDownload = async (id, title) => {
     try {
       await downloadDocumentFile(id, title);
+      setError("");
     } catch (err) {
-      console.error("Download fail:", err);
+      setError(err.response?.data?.message || "Failed to download document.");
     }
   };
 

@@ -67,8 +67,9 @@ const Favorites = () => {
   const handleDownloadDocument = async (documentId, title) => {
     try {
       await downloadDocumentFile(documentId, title);
+      setError('');
     } catch (err) {
-      console.error('Download failed:', err);
+      setError(err.response?.data?.message || 'Failed to download document.');
     }
   };
 

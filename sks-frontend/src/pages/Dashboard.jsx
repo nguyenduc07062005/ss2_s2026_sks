@@ -1851,7 +1851,7 @@ const Dashboard = () => {
           <div className="mb-8 rounded-2xl bg-rose-50/50 border border-rose-100 p-6">
             <p className="text-base font-bold text-slate-700 leading-relaxed">
               Are you sure you want to delete <strong className="text-rose-600">{folderToDelete.name}</strong>? 
-              <br /><span className="text-sm font-medium text-slate-500 mt-2 block">This will remove all documents and subfolders within it. This action cannot be undone.</span>
+              <br /><span className="text-sm font-medium text-slate-500 mt-2 block">Documents and subfolders inside it will be moved to the parent folder.</span>
             </p>
           </div>
 

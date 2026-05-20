@@ -173,15 +173,9 @@ export class DocumentService {
     );
     if (userDoc) {
       throw new BadRequestException('Duplicate file upload');
-    } else {
-      // Different user – link existing document
-      await this.userDocumentRepository.create({
-        user: { id: ownerId },
-        document: { id: existingDoc.id },
-        isFavorite: false,
-      });
-      return existingDoc;
     }
+
+    return existingDoc;
   }
 
   /**
@@ -195,8 +189,12 @@ export class DocumentService {
     switch (file.mimetype) {
       case 'application/pdf': {
         const parser = new PDFParse({ data: new Uint8Array(file.buffer) });
-        const pdfResult = await parser.getText();
-        text = pdfResult.text;
+        try {
+          const pdfResult = await parser.getText();
+          text = pdfResult.text;
+        } finally {
+          await parser.destroy();
+        }
         break;
       }
 
@@ -280,19 +278,13 @@ export class DocumentService {
           targetFolderId = (await this.ensureRootFolder(ownerId)).id;
         }
 
-        const userDocument = await this.userDocumentRepository.findOne({
-          where: {
-            user: { id: ownerId },
-            document: { id: duplicateDoc.id },
-          },
-          relations: ['folder'],
+        await this.userDocumentRepository.create({
+          user: { id: ownerId },
+          document: { id: duplicateDoc.id },
+          folder: { id: targetFolderId },
+          documentName: dto.title || file.originalname,
+          isFavorite: false,
         });
-
-        if (userDocument) {
-          userDocument.folder = { id: targetFolderId } as never;
-          userDocument.documentName = dto.title || file.originalname;
-          await this.userDocumentRepository.getRepository().save(userDocument);
-        }
 
         return {
           id: duplicateDoc.id,
@@ -1192,46 +1184,6 @@ export class DocumentService {
 
   private createStudyNoteId(): string {
     return `note-${crypto.randomUUID()}`;
-  }
-
-  private readStudyNote(
-    extraAttributes: Record<string, any> | null | undefined,
-  ): DocumentStudyNote {
-    const rawNote =
-      extraAttributes &&
-      typeof extraAttributes === 'object' &&
-      !Array.isArray(extraAttributes)
-        ? (extraAttributes as Record<string, unknown>).sksNote
-        : null;
-
-    if (!rawNote || typeof rawNote !== 'object' || Array.isArray(rawNote)) {
-      return {
-        id: 'default',
-        title: 'Study Note',
-        content: '',
-        createdAt: null,
-        updatedAt: null,
-      };
-    }
-
-    const candidate = rawNote as Record<string, unknown>;
-
-    return {
-      id: 'default',
-      title: 'Study Note',
-      content:
-        typeof candidate.content === 'string'
-          ? candidate.content.replace(/\r\n/g, '\n')
-          : '',
-      createdAt:
-        typeof candidate.updatedAt === 'string' && candidate.updatedAt
-          ? candidate.updatedAt
-          : null,
-      updatedAt:
-        typeof candidate.updatedAt === 'string' && candidate.updatedAt
-          ? candidate.updatedAt
-          : null,
-    };
   }
 
   /**

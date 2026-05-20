@@ -1,8 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { getProfile } from '../../service/authAPI.js';
+import {
+  changePassword,
+  getProfile,
+  updateProfile,
+} from '../../service/authAPI.js';
 import { clearToken } from '../../utils/auth.js';
 import { SKSMark } from '../BrandBadge.jsx';
+import ProfileDialog from './ProfileDialog.jsx';
 
 const WORKSPACE_SCROLL_STORAGE_KEY = 'sks.workspace.scrollPositions.v1';
 
@@ -43,7 +48,9 @@ const saveStoredScrollPositions = (positions) => {
 const WorkspaceShell = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [profile, setProfile] = useState(null);
   const [profileName, setProfileName] = useState('Workspace member');
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const scrollPositionsRef = useRef(loadStoredScrollPositions());
   const currentRouteKey = `${location.pathname}${location.search}`;
@@ -62,9 +69,13 @@ const WorkspaceShell = () => {
           profile?.name?.trim() ||
           profile?.email?.split('@')[0] ||
           'Workspace member';
+        setProfile(profile);
         setProfileName(nextName);
       } catch {
-        if (isActive) setProfileName('Workspace member');
+        if (isActive) {
+          setProfile(null);
+          setProfileName('Workspace member');
+        }
       }
     };
 
@@ -114,9 +125,25 @@ const WorkspaceShell = () => {
     return trimmedName ? trimmedName[0].toUpperCase() : 'S';
   }, [profileName]);
 
+  const profileEmail = profile?.email || '';
+
   const handleLogout = () => {
     clearToken();
     navigate('/login', { replace: true });
+  };
+
+  const handleUpdateName = async (name) => {
+    const updatedProfile = await updateProfile({ name });
+    setProfile(updatedProfile);
+    setProfileName(
+      updatedProfile?.name?.trim() ||
+        updatedProfile?.email?.split('@')[0] ||
+        'Workspace member',
+    );
+  };
+
+  const handleChangePassword = async ({ currentPassword, newPassword }) => {
+    return changePassword({ currentPassword, newPassword });
   };
 
   return (
@@ -184,33 +211,43 @@ const WorkspaceShell = () => {
 
           <div className="flex items-center gap-4">
             <div className={`flex items-center gap-3 ${isDocumentViewer ? 'ml-2' : 'ml-0 sm:ml-4 lg:ml-6'}`}>
-              <div className="group relative flex items-center gap-3 cursor-pointer">
-                <div className="relative flex h-9 w-9 items-center justify-center">
-                  <div className="absolute inset-0 rounded-xl bg-gradient-to-tr from-cyan-400 to-blue-500 blur-md opacity-20 group-hover:opacity-40 transition-opacity" />
-                  <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-[13px] font-black text-white shadow-lg ring-1 ring-white/20 transition-transform group-hover:scale-105">
+              <button
+                type="button"
+                onClick={() => setIsProfileOpen(true)}
+                className="group relative flex items-center gap-3 rounded-full bg-white/70 p-1.5 pr-5 text-left shadow-[0_2px_12px_-4px_rgba(0,0,0,0.08)] backdrop-blur-md ring-1 ring-white/50 transition-all duration-300 hover:bg-white hover:shadow-[0_8px_24px_-8px_rgba(6,182,212,0.25)] hover:ring-cyan-300/50 active:scale-[0.97]"
+                aria-label="Open profile settings"
+              >
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-cyan-400/0 via-cyan-400/10 to-blue-500/0 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+
+                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center">
+                  <div className="absolute -inset-[2px] animate-[spin_4s_linear_infinite] rounded-full bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 opacity-50 blur-[3px] transition-opacity duration-300 group-hover:opacity-100" />
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 shadow-inner" />
+                  <div className="relative z-10 flex h-full w-full items-center justify-center rounded-full bg-white/10 text-sm font-black text-white backdrop-blur-sm ring-1 ring-white/40">
                     {profileInitial}
                   </div>
                 </div>
-                <div className="hidden flex-col items-start leading-tight lg:flex">
-                  <span className="text-[12px] font-black text-slate-900">{profileName.split(' ')[0]}</span>
-                  <div className="flex items-center gap-1">
-                    <div className="h-1.5 w-1.5 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(6,145,178,0.5)]" />
-                    <span className="text-[9px] font-black uppercase tracking-wider text-cyan-600">Premium Pro</span>
+
+                <div className="relative z-10 hidden min-w-0 flex-col md:flex">
+                  <span className="max-w-[130px] truncate text-[13px] font-black tracking-tight text-slate-800 transition-all duration-300 group-hover:bg-gradient-to-r group-hover:from-cyan-600 group-hover:to-blue-600 group-hover:bg-clip-text group-hover:text-transparent">
+                    {profileName}
+                  </span>
+                  <div className="mt-[2px] flex items-center gap-1.5">
+                    <div className="relative flex h-1.5 w-1.5 items-center justify-center">
+                      <div className="absolute h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                      <div className="relative h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
+                    </div>
+                    <span className="max-w-[110px] truncate text-[10px] font-bold text-slate-400 transition-colors duration-300 group-hover:text-slate-500">
+                      {profileEmail || 'View profile'}
+                    </span>
                   </div>
                 </div>
-              </div>
 
-              <div className="h-5 w-px bg-slate-200/50" />
-
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="group flex h-10 w-10 items-center justify-center rounded-full text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-500 active:scale-95"
-                title="Logout Account"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-5 w-5 transition-transform group-hover:rotate-12">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
-                </svg>
+                {/* Chevron with bounce effect */}
+                <div className="relative z-10 hidden ml-2 h-6 w-6 items-center justify-center rounded-full bg-slate-50 text-slate-400 shadow-sm ring-1 ring-slate-200/50 transition-all duration-300 group-hover:bg-cyan-50 group-hover:text-cyan-600 group-hover:ring-cyan-200/50 md:flex">
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 transition-transform duration-300 group-hover:translate-y-[2px]">
+                    <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+                  </svg>
+                </div>
               </button>
             </div>
           </div>
@@ -249,6 +286,15 @@ const WorkspaceShell = () => {
           <Outlet />
         </section>
       )}
+
+      <ProfileDialog
+        isOpen={isProfileOpen}
+        profile={profile}
+        onClose={() => setIsProfileOpen(false)}
+        onChangePassword={handleChangePassword}
+        onLogout={handleLogout}
+        onUpdateName={handleUpdateName}
+      />
     </main>
   );
 };

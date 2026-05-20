@@ -13,7 +13,7 @@ The project has changed from the earlier mind map version. Mind map and diagram 
 |   |   +-- common/llm/           # MiMo text generation + Gemini embeddings
 |   |   +-- database/             # TypeORM entities, migrations, repositories
 |   |   +-- modules/
-|   |       +-- authentication/   # Register, login, profile, JWT guard
+|   |       +-- authentication/   # Email verification, login, password reset, JWT guard
 |   |       +-- document/         # Upload, document CRUD, file serving, notes
 |   |       +-- folder/           # Folder hierarchy and document placement
 |   |       +-- rag/              # Search, summary, Q&A, Study GPS, quiz
@@ -31,7 +31,7 @@ The project has changed from the earlier mind map version. Mind map and diagram 
 
 ## Current Features
 
-- JWT authentication with register, login, and profile.
+- JWT authentication with email verification, login, profile, and password reset links.
 - Upload `PDF`, `DOCX`, and `TXT` documents up to 10 MB.
 - Local file storage, file preview/download, document rename/delete, and favorites.
 - Automatic text extraction, chunking, background indexing, and embedding storage.
@@ -70,7 +70,7 @@ The backend is a NestJS API served under the global `/api` prefix.
 
 Core modules:
 
-- `authentication`: user registration, login, profile, JWT authentication.
+- `authentication`: email-based registration, password setup, login, password reset, profile, JWT authentication.
 - `document`: upload, extracted text storage, file serving, favorites, search, notes, related documents.
 - `folder`: per-user folder tree and document placement.
 - `rag`: indexing, retrieval, summary, Q&A, Study GPS, quiz, and chat history.
@@ -95,6 +95,9 @@ Important client routes:
 - `/`
 - `/login`
 - `/register`
+- `/complete-registration`
+- `/forgot-password`
+- `/reset-password`
 - `/app`
 - `/app/study-gps`
 - `/app/quiz`
@@ -130,7 +133,7 @@ Important implementation notes:
 
 Important tables created by migrations:
 
-- `users`: application users.
+- `users`: application users, email verification token hashes, and password reset token hashes.
 - `document`: canonical uploaded document metadata and source file reference.
 - `chunks`: extracted text chunks with optional embedding vectors.
 - `document_chunks`: many-to-many relation between documents and chunks.
@@ -175,6 +178,7 @@ Required local values:
 ```env
 PORT=8000
 CORS_ORIGIN=http://localhost:3000
+FRONTEND_URL=http://localhost:3000
 UPLOADS_DIR=uploads
 
 DATABASE_URL=
@@ -190,15 +194,24 @@ DATABASE_LOGGING=false
 JWT_SECRET=change_me_before_production
 JWT_EXPIRES_IN=1d
 
+MAIL_PROVIDER=smtp
+BREVO_API_KEY=
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=your_email@example.com
+SMTP_PASS=your_smtp_app_password
+MAIL_FROM="SKS Smart Knowledge System <your_email@example.com>"
+
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 
 MIMO_API_KEY=your_mimo_api_key
-MIMO_BASE_URL=https://api.xiaomimimo.com/v1
+MIMO_BASE_URL=https://token-plan-sgp.xiaomimimo.com/v1
 MIMO_MODEL=mimo-v2.5-pro
 ```
 
-Do not commit real `.env` values. `DATABASE_SYNC` should stay `false` because the project uses migrations.
+Do not commit real `.env` values. `DATABASE_SYNC` should stay `false` because the project uses migrations. For local Gmail SMTP, set `MAIL_PROVIDER=smtp` and use a Gmail app password for `SMTP_PASS`. On Render Free, set `MAIL_PROVIDER=brevo` and `BREVO_API_KEY` because Render Free blocks outbound SMTP ports.
 
 ### 3. Prepare PostgreSQL
 
@@ -255,7 +268,7 @@ Frontend URL:
 After both services are running:
 
 1. Open `http://localhost:3000`.
-2. Register and log in.
+2. Register with your name and email, open the email verification link, set a password, then log in.
 3. Upload a `PDF`, `DOCX`, or `TXT` document.
 4. Wait for AI indexing if the document shows an indexing state.
 5. Use workspace search, folders, favorites, and document actions.
@@ -272,8 +285,13 @@ All backend routes use the `/api` prefix.
 Base route: `/api/auth`
 
 - `POST /register`
+- `POST /complete-registration`
+- `POST /forgot-password`
+- `POST /reset-password`
 - `POST /login`
 - `GET /profile`
+- `PATCH /profile`
+- `PATCH /password`
 
 ### Documents
 
@@ -396,14 +414,19 @@ Production deployments should provide persistent storage for uploaded files.
 The repository includes `render.yaml` with:
 
 - Backend web service: `sks-s2026-backend`.
-- Static frontend service: `sks-s2026-frontend`.
-- PostgreSQL database: `sks-s2026-postgres`.
+- Static frontend service: `smartknowledge`.
+- External Neon PostgreSQL database through `DATABASE_URL`.
 - Backend pre-deploy migration command: `npm run migration:run`.
 - Frontend SPA rewrite to `/index.html`.
 
 Secrets marked `sync: false` in `render.yaml` must be configured in Render:
 
+- `DATABASE_URL` from Neon
+- `CLOUDFLARE_R2_ACCESS_KEY_ID`
+- `CLOUDFLARE_R2_SECRET_ACCESS_KEY`
 - `JWT_SECRET`
+- `BREVO_API_KEY`
+- `MAIL_FROM`
 - `GEMINI_API_KEY`
 - `MIMO_API_KEY`
 
@@ -411,8 +434,10 @@ Production checklist:
 
 - Use a strong `JWT_SECRET`.
 - Restrict `CORS_ORIGIN` to the deployed frontend URL.
+- Keep `DATABASE_SSL=true` for Neon.
 - Keep `DATABASE_SYNC=false`.
-- Ensure pgvector is available in the production database.
+- Use `MAIL_PROVIDER=brevo` on Render Free so email is sent over HTTPS instead of blocked SMTP ports.
+- Ensure `pgcrypto` and `pgvector` are available in the production database.
 - Persist or externalize uploaded file storage.
 - Monitor Gemini embedding quota and MiMo generation quota.
 
@@ -466,7 +491,6 @@ Check:
 
 ## Current Gaps / Follow-Up
 
-- Add a frontend `.env.example`.
 - Add a Docker Compose setup for backend, frontend, PostgreSQL, and pgvector.
 - Decide on a production file storage strategy for uploads.
 - Add more end-to-end coverage for Study GPS and Quiz flows.

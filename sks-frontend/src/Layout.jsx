@@ -6,8 +6,11 @@ import { DocumentsProvider } from './components/DocumentsContext.jsx';
 import { DocViewerProvider } from './context/DocViewerContext.jsx';
 
 const WorkspaceShell = lazy(() => import('./components/workspace/WorkspaceShell.jsx'));
+const CompleteRegistration = lazy(() => import('./components/auth/CompleteRegistration.jsx'));
+const ForgotPassword = lazy(() => import('./components/auth/ForgotPassword.jsx'));
 const Login = lazy(() => import('./components/auth/Login.jsx'));
 const Register = lazy(() => import('./components/auth/Register.jsx'));
+const ResetPassword = lazy(() => import('./components/auth/ResetPassword.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const DocumentViewer = lazy(() => import('./pages/DocumentViewer.jsx'));
 const Favorites = lazy(() => import('./pages/Favorites.jsx'));
@@ -26,6 +29,12 @@ const Layout = () => {
         <Route index element={renderRoute(<Home />)} />
         <Route path="login" element={renderRoute(<Login />)} />
         <Route path="register" element={renderRoute(<Register />)} />
+        <Route
+          path="complete-registration"
+          element={renderRoute(<CompleteRegistration />)}
+        />
+        <Route path="forgot-password" element={renderRoute(<ForgotPassword />)} />
+        <Route path="reset-password" element={renderRoute(<ResetPassword />)} />
         <Route path="home" element={<Navigate to="/" replace />} />
         <Route
           element={

@@ -14,7 +14,7 @@ describe('MimoGenerationService', () => {
       get: jest.fn((key: string) => {
         const values: Record<string, string> = {
           MIMO_API_KEY: 'mimo-test-key',
-          MIMO_BASE_URL: 'https://api.xiaomimimo.com/v1',
+          MIMO_BASE_URL: 'https://token-plan-sgp.xiaomimimo.com/v1',
           MIMO_MODEL: 'mimo-v2.5-pro',
         };
 
@@ -49,7 +49,7 @@ describe('MimoGenerationService', () => {
       | undefined;
 
     expect(firstCall?.[0]).toBe(
-      'https://api.xiaomimimo.com/v1/chat/completions',
+      'https://token-plan-sgp.xiaomimimo.com/v1/chat/completions',
     );
     expect(firstCall?.[1].method).toBe('POST');
     expect(firstCall?.[1].headers.Authorization).toBe('Bearer mimo-test-key');
@@ -128,7 +128,7 @@ describe('MimoGenerationService', () => {
     configService.get = jest.fn((key: string) => {
       const values: Record<string, string> = {
         MIMO_API_KEY: '  mimo-test-key  ',
-        MIMO_BASE_URL: '  https://api.xiaomimimo.com/v1/  ',
+        MIMO_BASE_URL: '  https://token-plan-sgp.xiaomimimo.com/v1/  ',
         MIMO_MODEL: '  mimo-v2.5-pro  ',
       };
 
@@ -157,7 +157,7 @@ describe('MimoGenerationService', () => {
     >;
 
     expect(firstCall?.[0]).toBe(
-      'https://api.xiaomimimo.com/v1/chat/completions',
+      'https://token-plan-sgp.xiaomimimo.com/v1/chat/completions',
     );
     expect(firstCall?.[1].headers.Authorization).toBe('Bearer mimo-test-key');
     expect(firstCall?.[1].headers['api-key']).toBe('mimo-test-key');
@@ -169,6 +169,35 @@ describe('MimoGenerationService', () => {
       const values: Record<string, string> = {
         MIMO_API_KEY: 'mimo-test-key',
         MIMO_BASE_URL: 'https://token-plan-sgp.xiaomimimo.com/v1',
+        MIMO_MODEL: 'mimo-v2.5-pro',
+      };
+
+      return values[key];
+    });
+    service = new MimoGenerationService(configService as ConfigService);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          choices: [{ message: { content: 'Generated answer' } }],
+        }),
+    });
+
+    await service.generateText('Explain the concept');
+
+    const firstCall = fetchMock.mock.calls[0] as
+      | [string, { body: string }]
+      | undefined;
+
+    expect(firstCall?.[0]).toBe(
+      'https://token-plan-sgp.xiaomimimo.com/v1/chat/completions',
+    );
+  });
+
+  it('uses the token-plan base URL when MIMO_BASE_URL is omitted', async () => {
+    configService.get = jest.fn((key: string) => {
+      const values: Record<string, string> = {
+        MIMO_API_KEY: 'mimo-test-key',
         MIMO_MODEL: 'mimo-v2.5-pro',
       };
 

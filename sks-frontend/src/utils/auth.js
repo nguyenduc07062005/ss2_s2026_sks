@@ -37,6 +37,25 @@ const getTokenPayload = () => {
   return decodeBase64Url(payload);
 };
 
+const getValidTokenPayload = () => {
+  const payload = getTokenPayload();
+
+  if (!payload) {
+    return null;
+  }
+
+  const expiresAtSeconds = Number(payload.exp);
+  if (
+    Number.isFinite(expiresAtSeconds) &&
+    expiresAtSeconds * 1000 <= Date.now()
+  ) {
+    clearToken();
+    return null;
+  }
+
+  return payload;
+};
+
 export const setToken = (token) => {
   if (!canUseStorage()) {
     return;
@@ -74,17 +93,17 @@ export const clearToken = () => {
 };
 
 export const isAuthenticated = () => {
-  return Boolean(getToken());
+  return Boolean(getValidTokenPayload());
 };
 
 export const getRoleFromToken = () => {
-  const payload = getTokenPayload();
+  const payload = getValidTokenPayload();
 
   return payload?.role || payload?.roles || payload?.userRole || null;
 };
 
 export const getUserIdFromToken = () => {
-  const payload = getTokenPayload();
+  const payload = getValidTokenPayload();
 
   return payload?.sub || payload?.userId || null;
 };

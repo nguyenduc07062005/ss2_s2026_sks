@@ -10,11 +10,15 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState(
+    location.state?.successMessage || '',
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (event) => {
     event.preventDefault();
+    setSuccessMessage('');
 
     if (!email || !password) {
       setError('Please enter both email and password.');
@@ -115,12 +119,26 @@ const Login = () => {
                     )}
                   </button>
                 </div>
+                <div className="mt-2 text-right">
+                  <Link
+                    className="text-sm font-semibold text-cyan-600 hover:text-cyan-500"
+                    to="/forgot-password"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
               </div>
 
               {error ? (
                 <div className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="mt-0.5 h-4 w-4 shrink-0"><path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" /></svg>
                   {error}
+                </div>
+              ) : null}
+
+              {successMessage ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {successMessage}
                 </div>
               ) : null}
 

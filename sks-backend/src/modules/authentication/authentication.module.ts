@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import type { JwtModuleOptions } from '@nestjs/jwt';
 import type { StringValue } from 'ms';
+import { MailModule } from 'src/common/mail/mail.module';
 import { AuthenticationController } from './authentication.controller';
 import { AuthenticationService } from './authentication.service';
 import { JwtStrategy } from './jwt/jwt.strategy';
@@ -10,6 +11,7 @@ import { JwtStrategy } from './jwt/jwt.strategy';
 @Module({
   imports: [
     ConfigModule,
+    MailModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

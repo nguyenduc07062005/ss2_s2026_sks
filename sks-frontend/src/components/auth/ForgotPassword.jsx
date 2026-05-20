@@ -1,49 +1,37 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { postRegister } from '../../service/authAPI.js';
+import { requestPasswordReset } from '../../service/authAPI.js';
 import AuthShowcase from './AuthShowcase.jsx';
 
-const Register = () => {
-  const [formData, setFormData] = useState({
-    email: '',
-    name: '',
-  });
+const ForgotPassword = () => {
+  const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    setFormData((current) => ({ ...current, [name]: value }));
-  };
-
-  const handleSignup = async (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
     setSuccessMessage('');
 
-    if (!formData.name.trim() || !formData.email.trim()) {
-      setError('Please enter your full name and email address.');
+    if (!email.trim()) {
+      setError('Please enter your email address.');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const response = await postRegister({
-        email: formData.email,
-        name: formData.name,
-      });
-
+      const response = await requestPasswordReset(email);
       setSuccessMessage(
         response.message ||
-          'Please check your email to verify your account and set a password.',
+          'If an account exists for this email, a password reset link has been sent.',
       );
-      setFormData({ email: '', name: '' });
+      setEmail('');
     } catch (requestError) {
       setError(
         requestError.response?.data?.message ||
-          'Registration failed. Please try again.',
+          'Could not request password reset. Please try again.',
       );
     } finally {
       setIsSubmitting(false);
@@ -52,59 +40,37 @@ const Register = () => {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 h-[36rem] w-[36rem] rounded-full bg-cyan-400/20 blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 h-[36rem] w-[36rem] rounded-full bg-sky-400/20 blur-3xl" />
-      </div>
-
       <section className="relative grid w-full max-w-3xl overflow-hidden rounded-3xl shadow-2xl shadow-sky-900/10 xl:grid-cols-[1fr_1fr]">
         <AuthShowcase
-          title="Create Account"
-          description="Start with your name and email. You will set a password from the secure email link."
-          variant="blue"
+          title="Reset Access"
+          description="Request a secure email link to create a new password."
+          variant="teal"
         />
 
         <div className="bg-white px-6 py-8 sm:px-8">
           <div className="mx-auto max-w-sm">
             <p className="text-xs font-bold uppercase tracking-widest text-cyan-600">
-              Account Registration
+              Password Help
             </p>
             <h2 className="mt-2 text-4xl font-bold text-slate-900">
-              Get Started
+              Forgot Password
             </h2>
             <p className="mt-2 text-base text-slate-500">
-              Enter your details and check your inbox to finish setup.
+              Enter your email and check your inbox for a reset link.
             </p>
 
-            <form className="mt-8 space-y-4" onSubmit={handleSignup}>
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Full Name
-                </label>
-                <input
-                  id="register-name"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-base text-slate-900 outline-none transition focus:border-cyan-500 focus:bg-white focus:ring-4 focus:ring-cyan-100 placeholder:text-slate-400"
-                  type="text"
-                  name="name"
-                  placeholder="e.g. John Doe"
-                  value={formData.name}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-
+            <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
                   Email Address
                 </label>
                 <input
-                  id="register-email"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-base text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 placeholder:text-slate-400"
+                  id="forgot-password-email"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-base text-slate-900 outline-none transition focus:border-cyan-500 focus:bg-white focus:ring-4 focus:ring-cyan-100 placeholder:text-slate-400"
                   type="email"
-                  name="email"
                   placeholder="name@example.com"
-                  value={formData.email}
-                  onChange={handleChange}
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
                   required
                 />
               </div>
@@ -122,17 +88,16 @@ const Register = () => {
               ) : null}
 
               <button
-                id="register-submit"
                 className="w-full rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-4 text-base font-bold text-white shadow-lg shadow-cyan-600/25 transition hover:from-cyan-500 hover:to-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                 type="submit"
                 disabled={isSubmitting}
               >
-                {isSubmitting ? 'Sending verification email...' : 'Send Email Link'}
+                {isSubmitting ? 'Sending reset link...' : 'Send Reset Link'}
               </button>
             </form>
 
             <p className="mt-8 text-center text-sm text-slate-500">
-              Already have an account?{' '}
+              Remember your password?{' '}
               <Link className="font-semibold text-cyan-600 hover:text-cyan-500" to="/login">
                 Log In
               </Link>
@@ -144,4 +109,4 @@ const Register = () => {
   );
 };
 
-export default Register;
+export default ForgotPassword;
