@@ -407,7 +407,8 @@ npm run build
 - Embeddings are stored in the `chunks.embedding` vector column.
 - Ask history, Study GPS, Study GPS day chat, and quiz chat are stored in PostgreSQL tables.
 
-Production deployments should provide persistent storage for uploaded files.
+Production deployments should use Cloudflare R2 for uploaded files by setting
+`DOCUMENT_STORAGE_DRIVER=r2` and the required R2 credentials.
 
 ## Render Deployment
 
@@ -438,7 +439,7 @@ Production checklist:
 - Keep `DATABASE_SYNC=false`.
 - Use `MAIL_PROVIDER=brevo` on Render Free so email is sent over HTTPS instead of blocked SMTP ports.
 - Ensure `pgcrypto` and `pgvector` are available in the production database.
-- Persist or externalize uploaded file storage.
+- Use Cloudflare R2 for uploaded file storage in production.
 - Monitor Gemini embedding quota and MiMo generation quota.
 
 ## Troubleshooting
@@ -492,7 +493,6 @@ Check:
 ## Current Gaps / Follow-Up
 
 - Add a Docker Compose setup for backend, frontend, PostgreSQL, and pgvector.
-- Decide on a production file storage strategy for uploads.
 - Add more end-to-end coverage for Study GPS and Quiz flows.
 
 ## License
